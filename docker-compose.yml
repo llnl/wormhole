@@ -1,0 +1,57 @@
+name: wormhole
+
+services:
+  token-service-db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: token_service
+      POSTGRES_USER: token_service
+      POSTGRES_PASSWORD: token_service
+    volumes:
+      - token-service-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U token_service -d token_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  token-service:
+    image: ghcr.io/llnl/wormhole-token-service:v0.2.2
+    restart: unless-stopped
+    depends_on:
+      token-service-db:
+        condition: service_healthy
+    environment:
+      DYNACONF_DB__url: postgresql://token_service:token_service@token-service-db:5432/token_service
+      DYNACONF_DB__username: token_service
+      DYNACONF_DB__password: token_service
+      DYNACONF_SERVER__host: 0.0.0.0
+      DYNACONF_SERVER__port: "5000"
+      DYNACONF_AUTH__auth_name: local_dev
+      DYNACONF_AUTH__local_dev__uid: admin
+      DYNACONF_AUTH__local_dev__is_admin: "true"
+      OTEL_SERVICE_NAME: token-service
+      OTEL_TRACES_EXPORTER: none
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+    ports:
+      - "${TOKEN_SERVICE_PORT:-5000}:5000"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+
+        wormhole_token_service generate-jwks --overwrite
+        export DYNACONF_AUTH__jwt__active_kid=1
+        export DYNACONF_AUTH__jwt__keys__1__key_type=RSA
+        export DYNACONF_AUTH__jwt__keys__1__public_pem="$(cat /app/jwks/public.pem)"
+        export DYNACONF_AUTH__jwt__keys__1__private_pem="$(cat /app/jwks/private.pem)"
+
+        alembic upgrade head
+        wormhole_token_service seed-dev-user
+
+        exec opentelemetry-instrument wormhole_token_service run
+
+volumes:
+  token-service-db-data:
