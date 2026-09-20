@@ -1,3 +1,6 @@
 # IDE settings
 .vscode/
 .idea/
+
+# MacOS directory metadata files
+**/.DS_Store
