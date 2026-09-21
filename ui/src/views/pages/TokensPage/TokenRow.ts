@@ -28,7 +28,7 @@ const renderTimestampCell = (seconds: number | null): m.Children => {
 
 const TokenRow: m.Component<TokenRowAttrs> = {
   view: ({ attrs }) =>
-    m('tr', [
+    m('tr', { 'data-testid': `token-row-${attrs.token.name}` }, [
       m('td', attrs.token.name),
       renderTimestampCell(attrs.token.iat),
       renderTimestampCell(attrs.token.nbf),
@@ -38,6 +38,7 @@ const TokenRow: m.Component<TokenRowAttrs> = {
           'button',
           {
             class: 'tw:d-btn tw:d-btn-error tw:d-btn-sm',
+            'data-testid': 'delete-token-button',
             onclick: async () => {
               await tokenRepo.deleteToken(attrs.token);
               attrs.ondelete(attrs.token);

@@ -49,6 +49,7 @@ const TokenTable: m.Component<Record<string, never>, TokenTableState> = {
                   {
                     colspan: 5,
                     class: 'tw:text-center tw:py-8 tw:text-base-content/50',
+                    'data-testid': 'empty-tokens-message',
                   },
                   'No tokens to display'
                 ),

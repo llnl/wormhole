@@ -1,4 +1,7 @@
 import { AbstractModel } from './AbstractModel';
+import type { components } from '../api-types';
+
+type TokenSchema = components['schemas']['Token'];
 
 export class Token extends AbstractModel {
   name: string;
@@ -10,7 +13,7 @@ export class Token extends AbstractModel {
   scopes: string[] | null;
   rotatable: boolean | null;
 
-  constructor(data: Partial<Token>) {
+  constructor(data: Partial<TokenSchema>) {
     super();
     this.name = data.name ?? '';
     this.id = data.id ?? null;

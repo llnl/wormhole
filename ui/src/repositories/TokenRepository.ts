@@ -1,5 +1,9 @@
 import { AbstractRepository } from './AbstractRepository';
 import { Token } from '../models/Token';
+import type {
+  ListTokensResponse,
+  CreateTokenResponse,
+} from '../token-api-types';
 
 export class TokenRepository extends AbstractRepository {
   public constructor() {
@@ -7,7 +11,7 @@ export class TokenRepository extends AbstractRepository {
   }
 
   public async getAllTokens(): Promise<Token[]> {
-    const tokens = await this.get<Partial<Token>[]>('/api/v1/token');
+    const tokens = await this.get<ListTokensResponse>('/api/v1/token');
 
     return tokens.map((token) => new Token(token));
   }
@@ -22,7 +26,7 @@ export class TokenRepository extends AbstractRepository {
       data.exp = token.exp.toString();
     }
 
-    return await this.post<string>('/api/v1/token', data);
+    return await this.post<CreateTokenResponse>('/api/v1/token', data);
   }
 
   public async deleteToken(token: Token): Promise<void> {

@@ -57,6 +57,7 @@ const CreatedTokenAlert: m.Component<
       {
         class:
           'tw:bg-gray-100 tw:border tw:border-gray-300 tw:rounded-md tw:p-3 tw:mb-6 tw:flex tw:flex-col tw:gap-2',
+        'data-testid': 'created-token-alert',
       },
       [
         m(
