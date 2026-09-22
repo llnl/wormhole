@@ -50,6 +50,7 @@ const CreateTokenButton: m.Component<
       'button',
       {
         class: 'tw:d-btn tw:d-btn-primary',
+        'data-testid': 'create-token-button',
         onclick: () => {
           open(state);
         },
@@ -109,6 +110,7 @@ const CreateTokenButton: m.Component<
                   class: 'tw:d-input tw:d-input-bordered tw:w-full',
                   type: 'text',
                   placeholder: 'Token name',
+                  'data-testid': 'token-name-input',
                   required: true,
                   value: state.name,
                   oninput: (event: InputEvent) => {
@@ -182,6 +184,7 @@ const CreateTokenButton: m.Component<
                   {
                     class: 'tw:d-btn tw:d-btn-primary',
                     type: 'submit',
+                    'data-testid': 'submit-create-token-button',
                     disabled: state.isSubmitting || !state.name.trim(),
                   },
                   state.isSubmitting ? 'Creating...' : 'Create'
