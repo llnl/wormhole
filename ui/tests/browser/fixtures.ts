@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import type { components } from '../../src/api-types';
 import type {
   ListTokensResponse,
@@ -23,9 +23,15 @@ export const makeToken = (overrides: Partial<MockToken> = {}): MockToken => {
   };
 };
 
+type EndpointHandler = (route: Route, url: URL) => Promise<void>;
+
 /**
  * Intercepts token-service API calls with an in-memory fake so tests don't
  * need a real backend. Returns the backing array for assertions.
+ *
+ * Handlers are keyed by exact (path, method) rather than method alone, so
+ * adding an endpoint that reuses a method already in use here (as PATCH and
+ * DELETE could, for example) can't be misrouted to the wrong handler.
  */
 export const mockTokenApi = async (
   page: Page,
@@ -33,17 +39,13 @@ export const mockTokenApi = async (
 ): Promise<MockToken[]> => {
   const tokens: ListTokensResponse = [...initialTokens];
 
-  await page.route('**/token-service/api/v1/token*', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-
-    switch (request.method()) {
-      case 'GET': {
+  const routes: Record<string, Partial<Record<string, EndpointHandler>>> = {
+    '/token-service/api/v1/token': {
+      GET: async (route) => {
         await route.fulfill({ json: tokens });
-        return;
-      }
-      case 'POST': {
-        const body = new URLSearchParams(request.postData() ?? '');
+      },
+      POST: async (route) => {
+        const body = new URLSearchParams(route.request().postData() ?? '');
         const nowSeconds = Math.floor(Date.now() / 1000);
         const generatedId = randomUUID();
         const created = makeToken({
@@ -57,22 +59,35 @@ export const mockTokenApi = async (
         tokens.push(created);
         const response: CreateTokenResponse = `${generatedId}.${randomUUID()}`;
         await route.fulfill({ json: response });
-        return;
-      }
-      case 'DELETE': {
+      },
+      DELETE: async (route, url) => {
         const name = url.searchParams.get('name');
         const index = tokens.findIndex((token) => token.name === name);
         if (index !== -1) {
           tokens.splice(index, 1);
         }
         await route.fulfill({ status: 204, body: '' });
+      },
+    },
+    '/token-service/api/v1/token/attestation': {
+      PATCH: async (route) => {
+        await route.fulfill({ status: 204, body: '' });
+      },
+    },
+  };
+
+  await page.route(
+    (url) => url.pathname in routes,
+    async (route) => {
+      const url = new URL(route.request().url());
+      const handler = routes[url.pathname][route.request().method()];
+      if (!handler) {
+        await route.continue();
         return;
       }
-      default: {
-        await route.continue();
-      }
+      await handler(route, url);
     }
-  });
+  );
 
   return tokens;
 };

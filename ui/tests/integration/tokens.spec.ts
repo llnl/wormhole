@@ -49,4 +49,21 @@ test.describe.serial('Tokens page (live backend)', () => {
     await reloadedRow.getByTestId('delete-token-button').click();
     await expect(reloadedRow).toBeHidden();
   });
+
+  test('attests a token', async ({ page }) => {
+    tokenName = randomUUID();
+    await page.goto('/');
+
+    await page.getByTestId('create-token-button').click();
+    await page.getByTestId('token-name-input').fill(tokenName);
+    await page.getByTestId('submit-create-token-button').click();
+    await expect(page.getByTestId('created-token-alert')).toBeVisible();
+
+    await page.getByTestId('attest-tokens-button').click();
+    await page.getByTestId('attest-acknowledge-button').click();
+
+    const row = page.getByTestId(`attest-token-row-${tokenName}`);
+    await row.getByTestId('attest-token-keep-button').click();
+    await expect(row.getByTestId('attest-token-status')).toHaveText('Kept');
+  });
 });
