@@ -3,6 +3,7 @@ import { Token } from '../models/Token';
 import type {
   ListTokensResponse,
   CreateTokenResponse,
+  AttestTokensRequest,
 } from '../token-api-types';
 
 export class TokenRepository extends AbstractRepository {
@@ -31,5 +32,13 @@ export class TokenRepository extends AbstractRepository {
 
   public async deleteToken(token: Token): Promise<void> {
     await this.delete('/api/v1/token', { name: token.name });
+  }
+
+  public async attestToken(token: Token): Promise<void> {
+    if (token.id === null) {
+      throw new Error('Token has no id.');
+    }
+    const data: AttestTokensRequest = { ids: [token.id] };
+    await this.patch('/api/v1/token/attestation', data);
   }
 }

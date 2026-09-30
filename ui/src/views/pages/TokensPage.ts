@@ -1,6 +1,7 @@
 import m from 'mithril';
 import CreateTokenButton from './TokensPage/CreateTokenButton';
 import CreatedTokenAlert from './TokensPage/CreatedTokenAlert';
+import AttestTokensButton from './TokensPage/AttestTokensButton';
 import TokenTable from './TokensPage/TokenTable';
 
 interface TokensPageState {
@@ -19,9 +20,14 @@ const TokensPage: m.Component<Record<string, never>, TokensPageState> = {
         'div',
         {
           key: 'create-token',
-          class: 'tw:flex tw:justify-end tw:items-center tw:mb-6',
+          class: 'tw:flex tw:justify-end tw:items-center tw:gap-3 tw:mb-6',
         },
         [
+          m(AttestTokensButton, {
+            onclose: () => {
+              state.tokenTableKey += 1;
+            },
+          }),
           m(CreateTokenButton, {
             oncreated: (createdToken: string) => {
               state.createdToken = createdToken;

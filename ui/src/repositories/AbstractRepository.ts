@@ -86,4 +86,18 @@ export abstract class AbstractRepository {
       throw this.normalizeError(error);
     }
   }
+
+  protected async patch(
+    route: string,
+    data: Record<string, unknown>
+  ): Promise<void> {
+    try {
+      await m.request<unknown>(this.url(route), {
+        method: 'PATCH',
+        body: data,
+      });
+    } catch (error: unknown) {
+      throw this.normalizeError(error);
+    }
+  }
 }
