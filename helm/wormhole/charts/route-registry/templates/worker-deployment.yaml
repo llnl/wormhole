@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "route-registry.workerFullname" . }}
+  labels:
+    {{- include "route-registry.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "route-registry.name" . }}-worker
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "route-registry.name" . }}-worker
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.global.serviceAccount.name | default "default" }}
+      securityContext:
+        {{- toYaml .Values.global.podSecurityContext | nindent 8 }}
+      volumes:
+        - name: route-registry-results
+          emptyDir: {}
+      containers:
+        - name: route-registry-worker
+          image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          args: ["listen-tasks"]
+          env:
+            - name: DYNACONF_DB__username
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.postgresSecretName" . }}
+                  key: route-registry-username
+            - name: DYNACONF_DB__password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.postgresSecretName" . }}
+                  key: route-registry-password
+            - name: DYNACONF_RABBITMQ__username
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.rabbitmqSecretName" . }}
+                  key: username
+            - name: DYNACONF_RABBITMQ__password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.rabbitmqSecretName" . }}
+                  key: password
+            {{- include "route-registry.customCAEnvVars" . | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "route-registry.fullname" . }}
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+            - secretRef:
+                name: {{ include "route-registry.rabbitmqSecretName" . }}
+          volumeMounts:
+            - name: route-registry-results
+              mountPath: /data
+            {{- include "route-registry.customCAVolumeMount" . | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
+          {{- with .Values.worker.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: route-registry-results
+          emptyDir: {}
+        {{- include "route-registry.customCAVolume" . | nindent 8 }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

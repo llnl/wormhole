@@ -1,0 +1,170 @@
+image:
+  registry: docker.io
+  repository: postgres
+  tag: "17"
+  pullPolicy: IfNotPresent
+
+# Image variant: "official" or "redhat"
+# - official: Standard postgres image (works on Kubernetes)
+# - redhat: Red Hat UBI-based image (works on OpenShift with arbitrary UIDs)
+imageVariant: official
+
+# Red Hat image configuration (when imageVariant: redhat)
+redhat:
+  image:
+    registry: registry.access.redhat.com
+    repository: ubi9/postgresql-16
+    tag: latest
+
+auth:
+  username: wormhole
+  password: wormhole
+  database: postgres
+  postgresPassword: wormhole
+  # Use existing secret - if not provided, chart creates one
+  # The secret must have keys: username, password, postgres-password
+  existingSecret: ""
+
+  # Application-specific database users
+  tokenServiceUser: tokenServiceUser
+  tokenServicePassword: tokenServicePassword
+  routeRegistryUser: routeRegistryUser
+  routeRegistryPassword: routeRegistryPassword
+
+# Database initialization scripts
+# These will be run on first startup
+initdb:
+  scripts:
+    # Create the application databases and users with proper permissions
+    init-databases.sh: |
+      #!/bin/bash
+      set -e
+
+      # Support both official and Red Hat image environment variables
+      # Red Hat images: use 'postgres' superuser for CREATE DATABASE
+      # Official images: use configured user (which is superuser by default)
+      if [ -n "$POSTGRESQL_ADMIN_PASSWORD" ]; then
+        # Red Hat image - use postgres superuser
+        DB_USER="postgres"
+        export PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD"
+      else
+        # Official image - use configured user
+        DB_USER="${POSTGRES_USER}"
+      fi
+      DB_NAME="${POSTGRES_DB:-${POSTGRESQL_DATABASE}}"
+
+      # Application user passwords from secrets
+      TOKEN_SERVICE_PASS="${TOKEN_SERVICE_PASSWORD:-tokenServicePassword}"
+      ROUTE_REGISTRY_PASS="${ROUTE_REGISTRY_PASSWORD:-routeRegistryPassword}"
+
+      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "$DB_NAME" <<-EOSQL
+        -- Create token service database and user (idempotent)
+        SELECT 'CREATE DATABASE "tokenServiceDB"'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'tokenServiceDB')\gexec
+
+        DO \$\$
+        BEGIN
+          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'tokenServiceUser') THEN
+            CREATE USER "tokenServiceUser" WITH PASSWORD '$TOKEN_SERVICE_PASS';
+          END IF;
+        END
+        \$\$;
+
+        -- Create route registry database and user (idempotent)
+        SELECT 'CREATE DATABASE "routeRegistryDB"'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'routeRegistryDB')\gexec
+
+        DO \$\$
+        BEGIN
+          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'routeRegistryUser') THEN
+            CREATE USER "routeRegistryUser" WITH PASSWORD '$ROUTE_REGISTRY_PASS';
+          END IF;
+        END
+        \$\$;
+      EOSQL
+
+      # Set up token service database with user-named schema (idempotent)
+      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "tokenServiceDB" <<-EOSQL
+        -- Revoke public schema access (security best practice)
+        REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+        REVOKE ALL ON SCHEMA public FROM "tokenServiceUser";
+
+        -- Create user-named schema owned by the user (idempotent)
+        CREATE SCHEMA IF NOT EXISTS "tokenServiceUser" AUTHORIZATION "tokenServiceUser";
+
+        -- Grant database-level permissions
+        GRANT CONNECT ON DATABASE "tokenServiceDB" TO "tokenServiceUser";
+
+        -- Grant all permissions on user's schema
+        GRANT ALL ON SCHEMA "tokenServiceUser" TO "tokenServiceUser";
+
+        -- Set user's search_path to use their schema by default
+        ALTER USER "tokenServiceUser" SET search_path TO "tokenServiceUser", public;
+
+        -- Set default privileges for future objects in user's schema
+        ALTER DEFAULT PRIVILEGES FOR USER "tokenServiceUser" IN SCHEMA "tokenServiceUser"
+          GRANT ALL PRIVILEGES ON TABLES TO "tokenServiceUser";
+        ALTER DEFAULT PRIVILEGES FOR USER "tokenServiceUser" IN SCHEMA "tokenServiceUser"
+          GRANT ALL PRIVILEGES ON SEQUENCES TO "tokenServiceUser";
+      EOSQL
+
+      # Set up route registry database with user-named schema (idempotent)
+      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "routeRegistryDB" <<-EOSQL
+        -- Revoke public schema access (security best practice)
+        REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+        REVOKE ALL ON SCHEMA public FROM "routeRegistryUser";
+
+        -- Create user-named schema owned by the user (idempotent)
+        CREATE SCHEMA IF NOT EXISTS "routeRegistryUser" AUTHORIZATION "routeRegistryUser";
+
+        -- Grant database-level permissions
+        GRANT CONNECT ON DATABASE "routeRegistryDB" TO "routeRegistryUser";
+
+        -- Grant all permissions on user's schema
+        GRANT ALL ON SCHEMA "routeRegistryUser" TO "routeRegistryUser";
+
+        -- Set user's search_path to use their schema by default
+        ALTER USER "routeRegistryUser" SET search_path TO "routeRegistryUser", public;
+
+        -- Set default privileges for future objects in user's schema
+        ALTER DEFAULT PRIVILEGES FOR USER "routeRegistryUser" IN SCHEMA "routeRegistryUser"
+          GRANT ALL PRIVILEGES ON TABLES TO "routeRegistryUser";
+        ALTER DEFAULT PRIVILEGES FOR USER "routeRegistryUser" IN SCHEMA "routeRegistryUser"
+          GRANT ALL PRIVILEGES ON SEQUENCES TO "routeRegistryUser";
+      EOSQL
+
+service:
+  type: ClusterIP
+  port: 5432
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 8Gi
+  storageClass: ""
+
+resources:
+  limits: {}
+  requests: {}
+
+# Override fullname to ensure service name consistency
+fullnameOverride: ""
+
+# For parent chart global values
+global:
+  imagePullSecrets: []
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  # Pod security context varies by image variant
+  # official: UID 999, redhat: UID 26 (but works with arbitrary UIDs via fix-permissions)
+  podSecurityContext: {}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault

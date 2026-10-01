@@ -1,0 +1,210 @@
+global:
+  imagePullSecrets: []
+  podSecurityContext: {}
+  containerSecurityContext:
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+  serviceAccount:
+    create: false
+    name: default
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Custom CA trust configuration
+  # Supports both OpenShift (auto-injection) and Kubernetes (manual)
+  customCA:
+    # Enable custom CA trust for all services
+    enabled: false
+
+    # ConfigMap name containing CA bundle (must exist in namespace)
+    # For OpenShift: Create with label config.openshift.io/inject-trusted-cabundle: "true"
+    # For Kubernetes: Create manually with ca-bundle.crt key
+    configMapName: custom-ca-bundle
+
+    # Key in ConfigMap containing the CA bundle
+    key: ca-bundle.crt
+
+    # Mount path for CA bundle (consistent across all services)
+    mountPath: /etc/ssl/certs/custom
+
+    # Optional: Create ConfigMap via Helm (for testing or Kubernetes without pre-existing CM)
+    createConfigMap: false
+
+    # OpenShift auto-injection support
+    openshift:
+      # Set to true if using OpenShift auto-injection
+      # When true, ConfigMap data is populated by OpenShift
+      autoInject: false
+
+    # Certificate content (only used if createConfigMap: true and autoInject: false)
+    # Provide PEM-encoded CA certificate(s)
+    certificate: ""
+
+    # Environment variables pointing applications to the mounted CA bundle
+    # These are injected into all services that enable customCA
+    envVars:
+      - name: REQUESTS_CA_BUNDLE
+        value: /etc/ssl/certs/custom/ca-bundle.crt
+      - name: SSL_CERT_FILE
+        value: /etc/ssl/certs/custom/ca-bundle.crt
+      - name: CURL_CA_BUNDLE
+        value: /etc/ssl/certs/custom/ca-bundle.crt
+
+# https://github.com/nats-io/k8s/tree/main/helm/charts/nats#nats-server
+nats:
+  enabled: true
+
+  global:
+    image:
+      registry: docker.io
+
+  config:
+    merge:
+      authorization:
+        users:
+          # Primary account used by all core Holepunch services. We could
+          # experiment with permissions once everything is running to offer
+          # several focused service accounts...
+          - user: << $NATS_USER >>
+            pass: << $NATS_PASSWORD >>
+            permissions:
+              publish:
+                - ">"
+              subscribe:
+                - ">"
+          # Potential token subscriber, will need to test permissions.
+          #- user: << $AUTH_SUB_USER >>
+          #  pass: << $AUTH_SUB_PASSWORD >>
+          #  permissions:
+          #    subscribe:
+          #      - "holepunch.*"
+
+      max_payload: << 8MB >>
+
+    cluster:
+      enabled: true
+      replicas: 3
+
+    jetstream:
+      enabled: true
+
+      fileStore:
+        enabled: true
+        dir: /data
+        pvc:
+          enabled: true
+          size: 1Gi
+          # storageClassName: ""  # Use default storage class
+
+      memoryStore:
+        enabled: true
+        maxSize: 1Gi
+
+  # Prevents voluntary disruptions (drains/updates) from evicting too
+  # many NATS pods at once.
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+
+  container:
+    env:
+      # Provider username/password for the required nats users:
+      #   kubectl create secret generic nats-auth \
+      #     --from-literal=username=nats_user \
+      #     --from-literal=password=nats_password
+      NATS_USER:
+        valueFrom:
+          secretKeyRef:
+            name: nats-auth
+            key: username
+      NATS_PASSWORD:
+        valueFrom:
+          secretKeyRef:
+            name: nats-auth
+            key: password
+
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+
+  natsBox:
+    enabled: false
+
+oauth2-proxy:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: quay.io/oauth2-proxy/oauth2-proxy
+    pullPolicy: IfNotPresent
+    # tag: ""  # Uses chart appVersion by default
+  service:
+    type: ClusterIP
+    portNumber: 4180
+  config:
+    existingSecret: ""
+    cookieName: _wormhole_holepunch
+  extraArgs:
+    cookie-expire: 12h
+    cookie-samesite: strict
+    cookie-secure: true
+    pass-access-token: true
+    provider: wormhole-oidc
+    scope: "openid email profile"
+    set-authorization-header: true
+    set-xauthrequest: true
+    skip-provider-button: true
+    upstream: static://200
+  extraEnv: []
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+  resources: {}
+  securityContext:
+    enabled: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    # runAsUser: 1000  # Omit to allow platform-specific UID assignment
+    runAsGroup: 0
+    seccompProfile:
+      type: RuntimeDefault
+
+
+# Holepunch deployment (see charts/holepunch/values.yaml)
+holepunch:
+  enabled: true
+
+# Piko deployment (see charts/piko/values.yaml)
+piko:
+  enabled: true
+
+# Postgres deployment (see charts/postgres/values.yaml)
+postgres:
+  enabled: true
+
+# Rabbitmq deployment (see charts/rabbitmq/values.yaml)
+rabbitmq:
+  enabled: true
+
+# Route Registry deployment (see charts/route-registry/values.yaml)
+route-registry:
+  enabled: true
+
+# Token Service deployment (see charts/route-registry/values.yaml)
+token-service:
+  enabled: true
+

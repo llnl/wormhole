@@ -1,0 +1,100 @@
+existingSecret: route-registry-secrets
+
+core:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/llnl/wormhole-route-registry
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 5001
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+  resources: {}
+
+worker:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/llnl/route-registry-celery
+    tag: "0.15.3"
+    pullPolicy: IfNotPresent
+  resources: {}
+
+dependencies:
+  postgres:
+    serviceName: ""
+    secretName: ""
+    protocol: postgresql
+    username: wormhole
+    port: 5432
+    database: routeRegistryDB
+  rabbitmq:
+    serviceName: ""
+    secretName: ""
+    username: rabbit
+    password: password
+  tokenService:
+    serviceName: ""
+    port: 80
+    apiVersion: v1
+    baseUrl: ""  # External URL for token service (e.g., https://wormhole.example.com/token-service)
+  holepunch:
+    adminServiceName: ""
+    adminPort: 8082
+    apiVersion: v1
+  piko:
+    serviceName: ""
+    port: 8000
+
+config:
+  logLevel: INFO
+  rootPath: /route-registry
+  server:
+    host: 0.0.0.0
+    port: 5001
+    loop: asyncio
+  auth:
+    authName: authlib_oidc
+    authlibOidc:
+      url: http://your-domain.com/route-registry
+      discoveryUrl: https://your-auth-provider.com/.well-known/openid-configuration
+      sessionConfig:
+        sessionCookie: route-registry-session
+        sameSite: strict
+        httpsOnly: true
+        maxAge: 43200
+        domain: ""
+      strategyName: GenericOAuth
+      redirectUri: /auth/callback
+    jwt:
+      lifespan: 2592000
+      activeKid: "1"
+  celery:
+    resultBackend: db+sqlite:////data/results.db
+  tasks:
+    maxRetries: 5
+    retryBackoff: 30
+  url:
+    bindSubdomain: false
+    entry:
+      baseUrl: http://localhost/wormhole
+    tunnel:
+      connectUrl: http://localhost:8000
+  otel:
+    tracesExporter: console
+    metricsExporter: console
+    logsExporter: console
+    otlpTracesEndpoint: ""
+    otlpMetricsEndpoint: ""
+    otlpLogsEndpoint: ""
+
+#
+# Global values set at this level to facilitate templates/testing only.
+global:
+  imagePullSecrets: []
+  serviceAccount: {}

@@ -1,0 +1,31 @@
+{{- if .Values.wildcardHosts }}
+{{- if .Values.openshift.enabled }}
+{{- range $key, $value := .Values.wildcardHosts }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "holepunch.fullname" $ }}-{{ $key }}
+  labels:
+    {{- include "holepunch.labels" $ | nindent 4 }}
+  {{- with $.Values.openshift.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  host: {{ $value | replace "*." "wildcard." }}
+  to:
+    kind: Service
+    name: {{ include "holepunch.fullname" $ }}-envoy
+    weight: 100
+  port:
+    targetPort: {{ $.Values.envoy.service.gateway.name }}
+  tls:
+    termination: {{ $.Values.openshift.route.tls.termination | default "edge" }}
+    {{- if $.Values.openshift.route.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ $.Values.openshift.route.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  wildcardPolicy: Subdomain
+{{- end }}
+{{- end }}
+{{- end }}

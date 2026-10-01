@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "route-registry.fullname" . }}
+  labels:
+    {{- include "route-registry.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.core.service.type }}
+  ports:
+    - port: {{ .Values.core.service.port }}
+      targetPort: {{ .Values.core.service.port }}
+      protocol: TCP
+      name: route-registry
+  selector:
+    {{- include "route-registry.selectorLabels" . | nindent 4 }}
