@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "route-registry.fullname" . }}
+  labels:
+    {{- include "route-registry.labels" . | nindent 4 }}
+data:
+  OTEL_SERVICE_NAME: {{ include "route-registry.fullname" . | quote }}
+  OTEL_TRACES_EXPORTER: {{ .Values.config.otel.tracesExporter | quote }}
+  OTEL_METRICS_EXPORTER: {{ .Values.config.otel.metricsExporter | quote }}
+  OTEL_LOGS_EXPORTER: {{ .Values.config.otel.logsExporter | quote }}
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: {{ .Values.config.otel.otlpTracesEndpoint | quote }}
+  OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: {{ .Values.config.otel.otlpMetricsEndpoint | quote }}
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: {{ .Values.config.otel.otlpLogsEndpoint | quote }}
+
+  DYNACONF_log_level: {{ .Values.config.logLevel | quote }}
+  DYNACONF_root_path: {{ .Values.config.rootPath | quote }}
+  DYNACONF_SERVER__host: {{ .Values.config.server.host | quote }}
+  DYNACONF_SERVER__port: {{ .Values.config.server.port | quote }}
+  DYNACONF_SERVER__loop: {{ .Values.config.server.loop | quote }}
+
+  DYNACONF_DB__url: {{ include "route-registry.postgresURL" . | quote }}
+  DB_SERVICE_NAME: {{ include "route-registry.postgresServiceName" . | quote }}
+
+  DYNACONF_CELERY__broker_url: {{ printf "amqp://%s:%s@%s:%d//" .Values.dependencies.rabbitmq.username .Values.dependencies.rabbitmq.password (include "route-registry.rabbitmqServiceName" .) 5672 | quote }}
+  DYNACONF_CELERY__result_backend: {{ .Values.config.celery.resultBackend | quote }}
+
+  DYNACONF_TASKS__max_retries: {{ .Values.config.tasks.maxRetries | quote }}
+  DYNACONF_TASKS__retry_backoff: {{ .Values.config.tasks.retryBackoff | quote }}
+
+  DYNACONF_URL__bind_subdomain: {{ .Values.config.url.bindSubdomain | quote }}
+  DYNACONF_URL__holepunch__base_url: {{ printf "http://%s:%d/api" (include "route-registry.holepunchAdminName" .) (int .Values.dependencies.holepunch.adminPort) | quote }}
+  DYNACONF_URL__holepunch__version: {{ .Values.dependencies.holepunch.apiVersion | quote }}
+  DYNACONF_URL__entry__base_url: {{ .Values.config.url.entry.baseUrl | quote }}
+  {{- if .Values.dependencies.tokenService.baseUrl }}
+  DYNACONF_URL__token_service__base_url: {{ .Values.dependencies.tokenService.baseUrl | quote }}
+  {{- else }}
+  DYNACONF_URL__token_service__base_url: {{ printf "http://%s:%d" (include "route-registry.tokenServiceName" .) (int .Values.dependencies.tokenService.port) | quote }}
+  {{- end }}
+  DYNACONF_URL__tunnel__base_url: {{ printf "http://%s:%d" (include "route-registry.pikoServiceName" .) (int .Values.dependencies.piko.port) | quote }}
+  DYNACONF_URL__tunnel__connect_url: {{ .Values.config.url.tunnel.connectUrl | quote }}
+
+  DYNACONF_AUTH__auth_name: {{ .Values.config.auth.authName | quote }}
+  DYNACONF_AUTH__token_service__host: {{ printf "http://%s:%d" (include "route-registry.tokenServiceName" .) (int .Values.dependencies.tokenService.port) | quote }}
+  DYNACONF_AUTH__token_service__api_version: {{ .Values.dependencies.tokenService.apiVersion | quote }}
+  DYNACONF_AUTH__authlib_oidc__url: {{ .Values.config.auth.authlibOidc.url | quote }}
+  DYNACONF_AUTH__authlib_oidc__session_config__session_cookie: {{ .Values.config.auth.authlibOidc.sessionConfig.sessionCookie | quote }}
+  DYNACONF_AUTH__authlib_oidc__session_config__same_site: {{ .Values.config.auth.authlibOidc.sessionConfig.sameSite | quote }}
+  DYNACONF_AUTH__authlib_oidc__session_config__https_only: {{ .Values.config.auth.authlibOidc.sessionConfig.httpsOnly | quote }}
+  DYNACONF_AUTH__authlib_oidc__session_config__max_age: {{ .Values.config.auth.authlibOidc.sessionConfig.maxAge | quote }}
+  {{- if .Values.config.auth.authlibOidc.sessionConfig.domain }}
+  DYNACONF_AUTH__authlib_oidc__session_config__domain: {{ .Values.config.auth.authlibOidc.sessionConfig.domain | quote }}
+  {{- end }}
+  DYNACONF_AUTH__authlib_oidc__strategy_name: {{ .Values.config.auth.authlibOidc.strategyName | quote }}
+  DYNACONF_AUTH__authlib_oidc__discovery_url: {{ .Values.config.auth.authlibOidc.discoveryUrl | quote }}
+  DYNACONF_AUTH__authlib_oidc__redirect_uri: {{ .Values.config.auth.authlibOidc.redirectUri | quote }}
+
+  DYNACONF_AUTH__jwt__lifespan: {{ .Values.config.auth.jwt.lifespan | quote }}
+  DYNACONF_AUTH__jwt__active_kid: {{ .Values.config.auth.jwt.activeKid | quote }}
