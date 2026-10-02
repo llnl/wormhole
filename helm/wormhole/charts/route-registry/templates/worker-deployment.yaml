@@ -23,9 +23,6 @@ spec:
       serviceAccountName: {{ .Values.global.serviceAccount.name | default "default" }}
       securityContext:
         {{- toYaml .Values.global.podSecurityContext | nindent 8 }}
-      volumes:
-        - name: route-registry-results
-          emptyDir: {}
       containers:
         - name: route-registry-worker
           image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
