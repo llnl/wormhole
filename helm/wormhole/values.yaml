@@ -204,7 +204,7 @@ rabbitmq:
 route-registry:
   enabled: true
 
-# Token Service deployment (see charts/route-registry/values.yaml)
+# Token Service deployment (see charts/token-service/values.yaml)
 token-service:
   enabled: true
 
