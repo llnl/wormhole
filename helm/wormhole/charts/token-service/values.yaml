@@ -22,7 +22,7 @@ dependencies:
     serviceName: ""
     secretName: ""
     protocol: postgresql
-    username: wormhole
+    username: tokenServiceUser
     port: 5432
     database: tokenServiceDB
 
