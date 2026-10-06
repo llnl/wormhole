@@ -30,7 +30,7 @@ dependencies:
     serviceName: ""
     secretName: ""
     protocol: postgresql
-    username: wormhole
+    username: routeRegistryUser
     port: 5432
     database: routeRegistryDB
   rabbitmq:
