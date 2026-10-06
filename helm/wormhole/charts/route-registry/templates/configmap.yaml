@@ -22,7 +22,7 @@ data:
   DYNACONF_DB__url: {{ include "route-registry.postgresURL" . | quote }}
   DB_SERVICE_NAME: {{ include "route-registry.postgresServiceName" . | quote }}
 
-  DYNACONF_CELERY__broker_url: {{ printf "amqp://%s:%s@%s:%d//" .Values.dependencies.rabbitmq.username .Values.dependencies.rabbitmq.password (include "route-registry.rabbitmqServiceName" .) 5672 | quote }}
+  DYNACONF_CELERY__broker_url: {{ printf "amqp://%s@%s:%d//" .Values.dependencies.rabbitmq.username (include "route-registry.rabbitmqServiceName" .) 5672 | quote }}
   DYNACONF_CELERY__result_backend: {{ .Values.config.celery.resultBackend | quote }}
 
   DYNACONF_TASKS__max_retries: {{ .Values.config.tasks.maxRetries | quote }}
