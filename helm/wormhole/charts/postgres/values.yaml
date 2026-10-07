@@ -25,11 +25,13 @@ auth:
   # The secret must have keys: username, password, postgres-password
   existingSecret: ""
 
-  # Application-specific database users
+  # Application-specific database users and databases
   tokenServiceUser: tokenServiceUser
   tokenServicePassword: tokenServicePassword
+  tokenServiceDatabase: tokenServiceDB
   routeRegistryUser: routeRegistryUser
   routeRegistryPassword: routeRegistryPassword
+  routeRegistryDatabase: routeRegistryDB
 
 # Database initialization scripts
 # These will be run on first startup
@@ -53,84 +55,88 @@ initdb:
       fi
       DB_NAME="${POSTGRES_DB:-${POSTGRESQL_DATABASE}}"
 
-      # Application user passwords from secrets
+      # Application user configuration from environment
+      TOKEN_SERVICE_USER="${TOKEN_SERVICE_USER:-tokenServiceUser}"
       TOKEN_SERVICE_PASS="${TOKEN_SERVICE_PASSWORD:-tokenServicePassword}"
+      TOKEN_SERVICE_DB="${TOKEN_SERVICE_DATABASE:-tokenServiceDB}"
+      ROUTE_REGISTRY_USER="${ROUTE_REGISTRY_USER:-routeRegistryUser}"
       ROUTE_REGISTRY_PASS="${ROUTE_REGISTRY_PASSWORD:-routeRegistryPassword}"
+      ROUTE_REGISTRY_DB="${ROUTE_REGISTRY_DATABASE:-routeRegistryDB}"
 
       psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "$DB_NAME" <<-EOSQL
         -- Create token service database and user (idempotent)
-        SELECT 'CREATE DATABASE "tokenServiceDB"'
-        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'tokenServiceDB')\gexec
+        SELECT 'CREATE DATABASE "$TOKEN_SERVICE_DB"'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$TOKEN_SERVICE_DB')\gexec
 
         DO \$\$
         BEGIN
-          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'tokenServiceUser') THEN
-            CREATE USER "tokenServiceUser" WITH PASSWORD '$TOKEN_SERVICE_PASS';
+          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$TOKEN_SERVICE_USER') THEN
+            EXECUTE 'CREATE USER "$TOKEN_SERVICE_USER" WITH PASSWORD ''$TOKEN_SERVICE_PASS''';
           END IF;
         END
         \$\$;
 
         -- Create route registry database and user (idempotent)
-        SELECT 'CREATE DATABASE "routeRegistryDB"'
-        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'routeRegistryDB')\gexec
+        SELECT 'CREATE DATABASE "$ROUTE_REGISTRY_DB"'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$ROUTE_REGISTRY_DB')\gexec
 
         DO \$\$
         BEGIN
-          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'routeRegistryUser') THEN
-            CREATE USER "routeRegistryUser" WITH PASSWORD '$ROUTE_REGISTRY_PASS';
+          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$ROUTE_REGISTRY_USER') THEN
+            EXECUTE 'CREATE USER "$ROUTE_REGISTRY_USER" WITH PASSWORD ''$ROUTE_REGISTRY_PASS''';
           END IF;
         END
         \$\$;
       EOSQL
 
       # Set up token service database with user-named schema (idempotent)
-      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "tokenServiceDB" <<-EOSQL
+      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "$TOKEN_SERVICE_DB" <<-EOSQL
         -- Revoke public schema access (security best practice)
         REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-        REVOKE ALL ON SCHEMA public FROM "tokenServiceUser";
+        REVOKE ALL ON SCHEMA public FROM "$TOKEN_SERVICE_USER";
 
         -- Create user-named schema owned by the user (idempotent)
-        CREATE SCHEMA IF NOT EXISTS "tokenServiceUser" AUTHORIZATION "tokenServiceUser";
+        CREATE SCHEMA IF NOT EXISTS "$TOKEN_SERVICE_USER" AUTHORIZATION "$TOKEN_SERVICE_USER";
 
         -- Grant database-level permissions
-        GRANT CONNECT ON DATABASE "tokenServiceDB" TO "tokenServiceUser";
+        GRANT CONNECT ON DATABASE "$TOKEN_SERVICE_DB" TO "$TOKEN_SERVICE_USER";
 
         -- Grant all permissions on user's schema
-        GRANT ALL ON SCHEMA "tokenServiceUser" TO "tokenServiceUser";
+        GRANT ALL ON SCHEMA "$TOKEN_SERVICE_USER" TO "$TOKEN_SERVICE_USER";
 
         -- Set user's search_path to use their schema by default
-        ALTER USER "tokenServiceUser" SET search_path TO "tokenServiceUser", public;
+        ALTER USER "$TOKEN_SERVICE_USER" SET search_path TO "$TOKEN_SERVICE_USER", public;
 
         -- Set default privileges for future objects in user's schema
-        ALTER DEFAULT PRIVILEGES FOR USER "tokenServiceUser" IN SCHEMA "tokenServiceUser"
-          GRANT ALL PRIVILEGES ON TABLES TO "tokenServiceUser";
-        ALTER DEFAULT PRIVILEGES FOR USER "tokenServiceUser" IN SCHEMA "tokenServiceUser"
-          GRANT ALL PRIVILEGES ON SEQUENCES TO "tokenServiceUser";
+        ALTER DEFAULT PRIVILEGES FOR USER "$TOKEN_SERVICE_USER" IN SCHEMA "$TOKEN_SERVICE_USER"
+          GRANT ALL PRIVILEGES ON TABLES TO "$TOKEN_SERVICE_USER";
+        ALTER DEFAULT PRIVILEGES FOR USER "$TOKEN_SERVICE_USER" IN SCHEMA "$TOKEN_SERVICE_USER"
+          GRANT ALL PRIVILEGES ON SEQUENCES TO "$TOKEN_SERVICE_USER";
       EOSQL
 
       # Set up route registry database with user-named schema (idempotent)
-      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "routeRegistryDB" <<-EOSQL
+      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "$ROUTE_REGISTRY_DB" <<-EOSQL
         -- Revoke public schema access (security best practice)
         REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-        REVOKE ALL ON SCHEMA public FROM "routeRegistryUser";
+        REVOKE ALL ON SCHEMA public FROM "$ROUTE_REGISTRY_USER";
 
         -- Create user-named schema owned by the user (idempotent)
-        CREATE SCHEMA IF NOT EXISTS "routeRegistryUser" AUTHORIZATION "routeRegistryUser";
+        CREATE SCHEMA IF NOT EXISTS "$ROUTE_REGISTRY_USER" AUTHORIZATION "$ROUTE_REGISTRY_USER";
 
         -- Grant database-level permissions
-        GRANT CONNECT ON DATABASE "routeRegistryDB" TO "routeRegistryUser";
+        GRANT CONNECT ON DATABASE "$ROUTE_REGISTRY_DB" TO "$ROUTE_REGISTRY_USER";
 
         -- Grant all permissions on user's schema
-        GRANT ALL ON SCHEMA "routeRegistryUser" TO "routeRegistryUser";
+        GRANT ALL ON SCHEMA "$ROUTE_REGISTRY_USER" TO "$ROUTE_REGISTRY_USER";
 
         -- Set user's search_path to use their schema by default
-        ALTER USER "routeRegistryUser" SET search_path TO "routeRegistryUser", public;
+        ALTER USER "$ROUTE_REGISTRY_USER" SET search_path TO "$ROUTE_REGISTRY_USER", public;
 
         -- Set default privileges for future objects in user's schema
-        ALTER DEFAULT PRIVILEGES FOR USER "routeRegistryUser" IN SCHEMA "routeRegistryUser"
-          GRANT ALL PRIVILEGES ON TABLES TO "routeRegistryUser";
-        ALTER DEFAULT PRIVILEGES FOR USER "routeRegistryUser" IN SCHEMA "routeRegistryUser"
-          GRANT ALL PRIVILEGES ON SEQUENCES TO "routeRegistryUser";
+        ALTER DEFAULT PRIVILEGES FOR USER "$ROUTE_REGISTRY_USER" IN SCHEMA "$ROUTE_REGISTRY_USER"
+          GRANT ALL PRIVILEGES ON TABLES TO "$ROUTE_REGISTRY_USER";
+        ALTER DEFAULT PRIVILEGES FOR USER "$ROUTE_REGISTRY_USER" IN SCHEMA "$ROUTE_REGISTRY_USER"
+          GRANT ALL PRIVILEGES ON SEQUENCES TO "$ROUTE_REGISTRY_USER";
       EOSQL
 
 service:

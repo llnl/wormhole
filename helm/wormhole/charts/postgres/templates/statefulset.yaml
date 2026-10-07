@@ -66,17 +66,25 @@ spec:
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
             {{- end }}
-            # Application user passwords for init script
+            # Application user configuration for init script
+            - name: TOKEN_SERVICE_USER
+              value: {{ .Values.auth.tokenServiceUser | quote }}
             - name: TOKEN_SERVICE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "postgres.secretName" . }}
                   key: token-service-password
+            - name: TOKEN_SERVICE_DATABASE
+              value: {{ .Values.auth.tokenServiceDatabase | quote }}
+            - name: ROUTE_REGISTRY_USER
+              value: {{ .Values.auth.routeRegistryUser | quote }}
             - name: ROUTE_REGISTRY_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "postgres.secretName" . }}
                   key: route-registry-password
+            - name: ROUTE_REGISTRY_DATABASE
+              value: {{ .Values.auth.routeRegistryDatabase | quote }}
           ports:
             - name: postgresql
               containerPort: 5432

@@ -7,12 +7,23 @@ postgres:
   # Image variant: 'upstream' for standard PostgreSQL, 'redhat' for RHEL-based images
   imageVariant: upstream
 
-  # Authentication secret containing username/password
+  # Authentication secret containing username/password for main database
+  # Also includes application-specific passwords
   # Create with: kubectl create secret generic postgres-secrets \
   #   --from-literal=username=wormhole \
-  #   --from-literal=password=<secure-password>
+  #   --from-literal=password=<secure-password> \
+  #   --from-literal=postgres-password=<postgres-admin-password> \
+  #   --from-literal=token-service-password=<token-service-password> \
+  #   --from-literal=route-registry-password=<route-registry-password>
   auth:
     existingSecret: postgres-secrets
+
+    # Customize application database names and usernames
+    # These are created automatically by the init script
+    tokenServiceUser: tokenServiceUser
+    tokenServiceDatabase: tokenServiceDB
+    routeRegistryUser: routeRegistryUser
+    routeRegistryDatabase: routeRegistryDB
 
   # For RedHat/OpenShift environments using certified images
   # redhat:
