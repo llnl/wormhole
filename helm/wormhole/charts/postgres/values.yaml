@@ -71,10 +71,13 @@ initdb:
         DO \$\$
         BEGIN
           IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$TOKEN_SERVICE_USER') THEN
-            EXECUTE 'CREATE USER "$TOKEN_SERVICE_USER" WITH PASSWORD ''$TOKEN_SERVICE_PASS''';
+            CREATE USER "$TOKEN_SERVICE_USER";
           END IF;
         END
         \$\$;
+
+        -- Always update password (supports secret rotation)
+        ALTER USER "$TOKEN_SERVICE_USER" WITH PASSWORD '$TOKEN_SERVICE_PASS';
 
         -- Create route registry database and user (idempotent)
         SELECT 'CREATE DATABASE "$ROUTE_REGISTRY_DB"'
@@ -83,10 +86,13 @@ initdb:
         DO \$\$
         BEGIN
           IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$ROUTE_REGISTRY_USER') THEN
-            EXECUTE 'CREATE USER "$ROUTE_REGISTRY_USER" WITH PASSWORD ''$ROUTE_REGISTRY_PASS''';
+            CREATE USER "$ROUTE_REGISTRY_USER";
           END IF;
         END
         \$\$;
+
+        -- Always update password (supports secret rotation)
+        ALTER USER "$ROUTE_REGISTRY_USER" WITH PASSWORD '$ROUTE_REGISTRY_PASS';
       EOSQL
 
       # Set up token service database with user-named schema (idempotent)
