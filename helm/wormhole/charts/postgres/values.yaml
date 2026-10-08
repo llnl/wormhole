@@ -1,0 +1,182 @@
+image:
+  registry: docker.io
+  repository: postgres
+  tag: "17"
+  pullPolicy: IfNotPresent
+
+# Image variant: "official" or "redhat"
+# - official: Standard postgres image (works on Kubernetes)
+# - redhat: Red Hat UBI-based image (works on OpenShift with arbitrary UIDs)
+imageVariant: official
+
+# Red Hat image configuration (when imageVariant: redhat)
+redhat:
+  image:
+    registry: registry.access.redhat.com
+    repository: ubi9/postgresql-16
+    tag: latest
+
+auth:
+  username: wormhole
+  password: wormhole
+  database: postgres
+  postgresPassword: wormhole
+  # Use existing secret - if not provided, chart creates one
+  # The secret must have keys: username, password, postgres-password
+  existingSecret: ""
+
+  # Application-specific database users and databases
+  tokenServiceUser: tokenServiceUser
+  tokenServicePassword: tokenServicePassword
+  tokenServiceDatabase: tokenServiceDB
+  routeRegistryUser: routeRegistryUser
+  routeRegistryPassword: routeRegistryPassword
+  routeRegistryDatabase: routeRegistryDB
+
+# Database initialization scripts
+# These will be run on first startup
+initdb:
+  scripts:
+    # Create the application databases and users with proper permissions
+    init-databases.sh: |
+      #!/bin/bash
+      set -e
+
+      # Support both official and Red Hat image environment variables
+      # Red Hat images: use 'postgres' superuser for CREATE DATABASE
+      # Official images: use configured user (which is superuser by default)
+      if [ -n "$POSTGRESQL_ADMIN_PASSWORD" ]; then
+        # Red Hat image - use postgres superuser
+        DB_USER="postgres"
+        export PGPASSWORD="$POSTGRESQL_ADMIN_PASSWORD"
+      else
+        # Official image - use configured user
+        DB_USER="${POSTGRES_USER}"
+      fi
+      DB_NAME="${POSTGRES_DB:-${POSTGRESQL_DATABASE}}"
+
+      # Application user configuration from environment
+      TOKEN_SERVICE_USER="${TOKEN_SERVICE_USER:-tokenServiceUser}"
+      TOKEN_SERVICE_PASS="${TOKEN_SERVICE_PASSWORD:-tokenServicePassword}"
+      TOKEN_SERVICE_DB="${TOKEN_SERVICE_DATABASE:-tokenServiceDB}"
+      ROUTE_REGISTRY_USER="${ROUTE_REGISTRY_USER:-routeRegistryUser}"
+      ROUTE_REGISTRY_PASS="${ROUTE_REGISTRY_PASSWORD:-routeRegistryPassword}"
+      ROUTE_REGISTRY_DB="${ROUTE_REGISTRY_DATABASE:-routeRegistryDB}"
+
+      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "$DB_NAME" <<-EOSQL
+        -- Create token service database and user (idempotent)
+        SELECT 'CREATE DATABASE "$TOKEN_SERVICE_DB"'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$TOKEN_SERVICE_DB')\gexec
+
+        DO \$\$
+        BEGIN
+          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$TOKEN_SERVICE_USER') THEN
+            CREATE USER "$TOKEN_SERVICE_USER";
+          END IF;
+        END
+        \$\$;
+
+        -- Always update password (supports secret rotation)
+        ALTER USER "$TOKEN_SERVICE_USER" WITH PASSWORD '$TOKEN_SERVICE_PASS';
+
+        -- Create route registry database and user (idempotent)
+        SELECT 'CREATE DATABASE "$ROUTE_REGISTRY_DB"'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$ROUTE_REGISTRY_DB')\gexec
+
+        DO \$\$
+        BEGIN
+          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$ROUTE_REGISTRY_USER') THEN
+            CREATE USER "$ROUTE_REGISTRY_USER";
+          END IF;
+        END
+        \$\$;
+
+        -- Always update password (supports secret rotation)
+        ALTER USER "$ROUTE_REGISTRY_USER" WITH PASSWORD '$ROUTE_REGISTRY_PASS';
+      EOSQL
+
+      # Set up token service database with user-named schema (idempotent)
+      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "$TOKEN_SERVICE_DB" <<-EOSQL
+        -- Revoke public schema access (security best practice)
+        REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+        REVOKE ALL ON SCHEMA public FROM "$TOKEN_SERVICE_USER";
+
+        -- Create user-named schema owned by the user (idempotent)
+        CREATE SCHEMA IF NOT EXISTS "$TOKEN_SERVICE_USER" AUTHORIZATION "$TOKEN_SERVICE_USER";
+
+        -- Grant database-level permissions
+        GRANT CONNECT ON DATABASE "$TOKEN_SERVICE_DB" TO "$TOKEN_SERVICE_USER";
+
+        -- Grant all permissions on user's schema
+        GRANT ALL ON SCHEMA "$TOKEN_SERVICE_USER" TO "$TOKEN_SERVICE_USER";
+
+        -- Set user's search_path to use their schema by default
+        ALTER USER "$TOKEN_SERVICE_USER" SET search_path TO "$TOKEN_SERVICE_USER", public;
+
+        -- Set default privileges for future objects in user's schema
+        ALTER DEFAULT PRIVILEGES FOR USER "$TOKEN_SERVICE_USER" IN SCHEMA "$TOKEN_SERVICE_USER"
+          GRANT ALL PRIVILEGES ON TABLES TO "$TOKEN_SERVICE_USER";
+        ALTER DEFAULT PRIVILEGES FOR USER "$TOKEN_SERVICE_USER" IN SCHEMA "$TOKEN_SERVICE_USER"
+          GRANT ALL PRIVILEGES ON SEQUENCES TO "$TOKEN_SERVICE_USER";
+      EOSQL
+
+      # Set up route registry database with user-named schema (idempotent)
+      psql -v ON_ERROR_STOP=1 --username "$DB_USER" --dbname "$ROUTE_REGISTRY_DB" <<-EOSQL
+        -- Revoke public schema access (security best practice)
+        REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+        REVOKE ALL ON SCHEMA public FROM "$ROUTE_REGISTRY_USER";
+
+        -- Create user-named schema owned by the user (idempotent)
+        CREATE SCHEMA IF NOT EXISTS "$ROUTE_REGISTRY_USER" AUTHORIZATION "$ROUTE_REGISTRY_USER";
+
+        -- Grant database-level permissions
+        GRANT CONNECT ON DATABASE "$ROUTE_REGISTRY_DB" TO "$ROUTE_REGISTRY_USER";
+
+        -- Grant all permissions on user's schema
+        GRANT ALL ON SCHEMA "$ROUTE_REGISTRY_USER" TO "$ROUTE_REGISTRY_USER";
+
+        -- Set user's search_path to use their schema by default
+        ALTER USER "$ROUTE_REGISTRY_USER" SET search_path TO "$ROUTE_REGISTRY_USER", public;
+
+        -- Set default privileges for future objects in user's schema
+        ALTER DEFAULT PRIVILEGES FOR USER "$ROUTE_REGISTRY_USER" IN SCHEMA "$ROUTE_REGISTRY_USER"
+          GRANT ALL PRIVILEGES ON TABLES TO "$ROUTE_REGISTRY_USER";
+        ALTER DEFAULT PRIVILEGES FOR USER "$ROUTE_REGISTRY_USER" IN SCHEMA "$ROUTE_REGISTRY_USER"
+          GRANT ALL PRIVILEGES ON SEQUENCES TO "$ROUTE_REGISTRY_USER";
+      EOSQL
+
+service:
+  type: ClusterIP
+  port: 5432
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 8Gi
+  storageClass: ""
+
+resources:
+  limits: {}
+  requests: {}
+
+# Override fullname to ensure service name consistency
+fullnameOverride: ""
+
+# For parent chart global values
+global:
+  imagePullSecrets: []
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  # Pod security context varies by image variant
+  # official: UID 999, redhat: UID 26 (but works with arbitrary UIDs via fix-permissions)
+  podSecurityContext: {}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault

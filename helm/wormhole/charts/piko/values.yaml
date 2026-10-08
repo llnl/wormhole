@@ -1,0 +1,72 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/andydunstall/piko
+  tag: latest
+  pullPolicy: IfNotPresent
+
+command: []
+args: []
+
+server:
+  # Proxy port - listens for requests forwarded to upstream services
+  proxyPort: 8000
+  # Upstream port - listens for connections from upstream services
+  upstreamPort: 8001
+  # Admin port - exposes API for metrics and observability
+  adminPort: 8002
+  # Gossip port - for inter-node traffic
+  gossipPort: 8003
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # Default port name to route traffic to (proxy, upstream, admin, gossip)
+  # Can be overridden per-host. Default: upstream (for CLI connections)
+  portName: upstream
+  hosts: []
+  # Examples:
+  # Single host with default port:
+  # - host: piko.example.com
+  #   paths:
+  #     - path: /
+  #       pathType: Prefix
+  #
+  # Multiple hosts with different ports:
+  # - host: piko-upstream.example.com
+  #   portName: upstream  # Routes to upstream port (8001) for CLI
+  #   paths:
+  #     - path: /
+  #       pathType: Prefix
+  # - host: piko-admin.example.com
+  #   portName: admin  # Routes to admin port (8002) for metrics
+  #   paths:
+  #     - path: /
+  #       pathType: Prefix
+  tls: []
+  # Example:
+  # - secretName: piko-tls
+  #   hosts:
+  #     - piko-upstream.example.com
+  #     - piko-admin.example.com
+
+auth:
+  enabled: false
+  disable_disconnect_on_expiry: false
+  jwks:
+    endpoint: ""
+    cache_ttl: "15m"
+    timeout: "10s"
+
+env: {}
+resources: {}
+
+#
+# Global values set at this level to facilitate templates/testing only.
+global:
+  imagePullSecrets: []
+  serviceAccount: {}

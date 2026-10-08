@@ -1,0 +1,382 @@
+# Example Wormhole deployment configuration
+# This file demonstrates all major configuration options used in production deployments.
+# Copy and customize this file for your environment.
+
+# PostgreSQL configuration
+postgres:
+  # Image variant: 'upstream' for standard PostgreSQL, 'redhat' for RHEL-based images
+  imageVariant: upstream
+
+  # Authentication secret containing username/password for main database
+  # Also includes application-specific passwords
+  # Create with: kubectl create secret generic postgres-secrets \
+  #   --from-literal=username=wormhole \
+  #   --from-literal=password=<secure-password> \
+  #   --from-literal=postgres-password=<postgres-admin-password> \
+  #   --from-literal=token-service-password=<token-service-password> \
+  #   --from-literal=route-registry-password=<route-registry-password>
+  auth:
+    existingSecret: postgres-secrets
+
+    # Customize application database names and usernames
+    # These are created automatically by the init script
+    tokenServiceUser: tokenServiceUser
+    tokenServiceDatabase: tokenServiceDB
+    routeRegistryUser: routeRegistryUser
+    routeRegistryDatabase: routeRegistryDB
+
+  # For RedHat/OpenShift environments using certified images
+  # redhat:
+  #   image:
+  #     registry: registry.redhat.io
+  #     repository: rhel9/postgresql-16
+  #     tag: "latest"
+
+# RabbitMQ configuration (used by Route Registry for async tasks)
+rabbitmq:
+  imageVariant: upstream
+
+  # Authentication secret containing username/password
+  # Create with: kubectl create secret generic rabbitmq-secrets \
+  #   --from-literal=username=wormhole \
+  #   --from-literal=password=<secure-password>
+  auth:
+    existingSecret: rabbitmq-secrets
+
+  # For RedHat/OpenShift environments
+  # redhat:
+  #   image:
+  #     registry: registry.redhat.io
+  #     repository: rhel9/rabbitmq-39
+  #     tag: "latest"
+
+  # Celery/Kombu compatibility configuration
+  config:
+    extraConfig: |
+      # Enable deprecated transient_nonexcl_queues for Celery/Kombu compatibility
+      # See: https://github.com/celery/kombu/issues/1600
+      deprecated_features.permit.transient_nonexcl_queues = true
+
+# Piko tunnel bastion configuration
+piko:
+  image:
+    repository: ghcr.io/andydunstall/piko/server
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # JWT authentication for tunnel connections
+  auth:
+    enabled: true
+    # Keep tunnels alive even after JWT expires (clients can refresh)
+    disable_disconnect_on_expiry: true
+
+    # JWKS endpoint for validating tunnel connection JWTs
+    # Points to Route Registry's public key endpoint
+    jwks:
+      endpoint: https://wormhole.example.com/route-registry/.well-known/jwks.json
+      timeout: 10s
+      cache_ttl: 1h
+
+  # Ingress for tunnel endpoint
+  ingress:
+    enabled: true
+    className: ""
+    annotations:
+      # For OpenShift Routes
+      # route.openshift.io/termination: edge
+    hosts:
+      - host: tunnel.wormhole.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+            port:
+              name: upstream
+
+# Route Registry service configuration
+route-registry:
+  # Secret containing JWT signing keys and other secrets
+  # Generate with: uv run route_registry generate-jwks --write-settings --overwrite
+  existingSecret: route-registry-secrets
+
+  # Dependencies on other services
+  dependencies:
+    postgres:
+      secretName: postgres-secrets
+    rabbitmq:
+      secretName: rabbitmq-secrets
+    tokenService:
+      baseUrl: https://wormhole.example.com/token-service
+
+  # Core API server configuration
+  core:
+    image:
+      repository: ghcr.io/llnl/wormhole-route-registry
+      tag: "v0.1.0"
+      pullPolicy: IfNotPresent
+
+    resources:
+      requests:
+        cpu: 300m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+    ingress:
+      enabled: true
+      className: ""
+      annotations:
+        # For OpenShift Routes
+        # route.openshift.io/termination: edge
+      hosts:
+        - host: wormhole.example.com
+          paths:
+            - path: /route-registry
+              pathType: Prefix
+              port:
+                name: http
+
+  # Application configuration
+  config:
+    # Authentication settings
+    auth:
+      # OAuth/OIDC for web UI
+      authlibOidc:
+        url: "https://wormhole.example.com/route-registry"
+        discoveryUrl: "https://auth.example.com/.well-known/openid-configuration"
+        sessionConfig:
+          domain: "wormhole.example.com"
+          sameSite: "lax"
+
+      # JWT validation from OAuth provider (for API access)
+      oauthJwt:
+        jwksUrl: "https://auth.example.com/oauth/jwks"
+
+    # URL generation settings
+    url:
+      bindSubdomain: true
+      tunnel:
+        connectUrl: https://tunnel.wormhole.example.com
+
+    # OpenTelemetry observability configuration
+    otel:
+      tracesExporter: "otlp"
+      metricsExporter: "otlp"
+      logsExporter: "otlp"
+      otlpTracesEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+      otlpMetricsEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+      otlpLogsEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+
+  # Celery worker for async route validation
+  worker:
+    replicaCount: 1
+    image:
+      repository: ghcr.io/llnl/wormhole-route-registry
+      tag: "v0.1.0"
+      pullPolicy: IfNotPresent
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# Token Service configuration
+token-service:
+  # Secret containing JWT signing keys and admin credentials
+  # Generate with: uv run token_service generate-jwks --write-settings --overwrite
+  existingSecret: token-service-secrets
+
+  dependencies:
+    postgres:
+      secretName: postgres-secrets
+
+  image:
+    repository: ghcr.io/llnl/wormhole-token-service
+    tag: "v0.2.0"
+    pullPolicy: IfNotPresent
+
+  resources:
+    requests:
+      cpu: 300m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  ingress:
+    enabled: true
+    className: ""
+    annotations:
+      # For OpenShift Routes
+      # route.openshift.io/termination: edge
+    hosts:
+      - host: wormhole.example.com
+        paths:
+          - path: /token-service
+            pathType: Prefix
+            port:
+              name: http
+
+  config:
+    auth:
+      authlibOidc:
+        url: "https://wormhole.example.com/token-service"
+        discoveryUrl: "https://auth.example.com/.well-known/openid-configuration"
+        sessionConfig:
+          domain: "wormhole.example.com"
+          sameSite: "lax"
+
+      oauthJwt:
+        jwksUrl: "https://auth.example.com/oauth/jwks"
+
+    url:
+      bindSubdomain: true
+      tunnel:
+        connectUrl: https://tunnel.wormhole.example.com
+
+    otel:
+      tracesExporter: "otlp"
+      metricsExporter: "otlp"
+      logsExporter: "otlp"
+      otlpTracesEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+      otlpMetricsEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+      otlpLogsEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+
+# NATS message broker configuration
+nats:
+  global:
+    image:
+      # Use public registry for open-source deployments
+      registry: docker.io
+
+  container:
+    resources:
+      requests:
+        cpu: 200m
+        memory: 500Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+# OAuth2 Proxy for authentication gateway
+oauth2-proxy:
+  enabled: true
+
+  image:
+    repository: quay.io/oauth2-proxy/oauth2-proxy
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  config:
+    # Unique cookie name for this deployment
+    cookieName: _wormhole_holepunch
+
+    # Secret containing client-id and client-secret
+    # Create with: kubectl create secret generic oauth2-proxy-secrets \
+    #   --from-literal=client-id=<your-client-id> \
+    #   --from-literal=client-secret=<your-client-secret> \
+    #   --from-literal=cookie-secret=$(openssl rand -base64 32)
+    existingSecret: oauth2-proxy-secrets
+
+  extraArgs:
+    # Cookie configuration
+    cookie-domain: ".wormhole.example.com"
+    cookie-expire: 12h
+    cookie-samesite: strict
+    cookie-secure: true
+
+    # OIDC provider configuration
+    oidc-issuer-url: https://auth.example.com
+    provider: oidc
+    redirect-url: https://auth.wormhole.example.com/oauth2/callback
+    scope: "openid email profile"
+
+    # Token and header forwarding
+    pass-access-token: true
+    set-authorization-header: true
+    set-xauthrequest: true
+    skip-provider-button: true
+
+    # Allowed domains for authentication (wildcard subdomains)
+    whitelist-domain: "auth.wormhole.example.com,.apps.wormhole.example.com,.services.wormhole.example.com"
+
+  ingress:
+    enabled: true
+    className: ""
+    annotations:
+      # Timeout for long-lived authentication flows
+      # haproxy.router.openshift.io/timeout: 120s
+      # route.openshift.io/termination: edge
+    hosts:
+      - auth.wormhole.example.com
+    path: /
+    pathType: Prefix
+
+  # Security context (disable for OpenShift environments)
+  podSecurityContext: {}
+  securityContext:
+    enabled: true
+
+# Holepunch gateway configuration (Envoy + xDS control plane)
+holepunch:
+  # Secret containing NATS credentials and other secrets
+  existingSecret: holepunch-secrets
+
+  image:
+    repository: ghcr.io/llnl/wormhole-holepunch
+    tag: "v0.2.0"
+    pullPolicy: IfNotPresent
+
+  # Allowed redirect URLs for OAuth flows (comma-separated)
+  redirectAllowlist: https://auth.wormhole.example.com
+
+  # Log level: debug, info, warn, error
+  logLevel: info
+
+  # OpenTelemetry endpoint for traces/metrics
+  otel:
+    address: otel-collector.observability.svc.cluster.local
+    port: 4317
+
+  # Wildcard domain patterns for user routes
+  # These define where user applications can be exposed
+  wildcardHosts:
+    apps: "*.apps.wormhole.example.com"
+    services: "*.services.wormhole.example.com"
+
+  # OpenShift-specific configuration
+  openshift:
+    enabled: false  # Set to true for OpenShift deployments
+    route:
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+
+  # Envoy proxy configuration
+  envoy:
+    resources:
+      requests:
+        cpu: 400m
+        memory: 500Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+
+    # Horizontal pod autoscaling
+    scaler:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      resourceName: memory
+      averageUtilization: 70
+
+  # Auth service autoscaling
+  authScaler:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    resourceName: memory
+    averageUtilization: 70

@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "route-registry.fullname" . }}
+  labels:
+    {{- include "route-registry.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.core.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "route-registry.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "route-registry.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.global.serviceAccount.name | default "default" }}
+      securityContext:
+        {{- toYaml .Values.global.podSecurityContext | nindent 8 }}
+      containers:
+        - name: route-registry
+          image: "{{ .Values.core.image.repository }}:{{ .Values.core.image.tag }}"
+          imagePullPolicy: {{ .Values.core.image.pullPolicy }}
+          env:
+            - name: DYNACONF_DB__username
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.postgresSecretName" . }}
+                  key: route-registry-username
+            - name: DYNACONF_DB__password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.postgresSecretName" . }}
+                  key: route-registry-password
+            - name: DYNACONF_RABBITMQ__username
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.rabbitmqSecretName" . }}
+                  key: username
+            - name: DYNACONF_RABBITMQ__password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.rabbitmqSecretName" . }}
+                  key: password
+            {{- include "route-registry.customCAEnvVars" . | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "route-registry.fullname" . }}
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+          volumeMounts:
+            - name: route-registry-results
+              mountPath: /data
+            {{- include "route-registry.customCAVolumeMount" . | nindent 12 }}
+          ports:
+            - name: route-registry
+              containerPort: {{ .Values.core.service.port }}
+              protocol: TCP
+          securityContext:
+            {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
+          {{- with .Values.core.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      initContainers:
+        - name: route-registry-init
+          image: "{{ .Values.core.image.repository }}:{{ .Values.core.image.tag }}"
+          imagePullPolicy: {{ .Values.core.image.pullPolicy }}
+          command: ["bash", "/app/scripts/migrate-db"]
+          env:
+            - name: DB_SERVICE_NAME
+              value: {{ include "route-registry.postgresServiceName" . }}
+            - name: DYNACONF_DB__username
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.postgresSecretName" . }}
+                  key: route-registry-username
+            - name: DYNACONF_DB__password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "route-registry.postgresSecretName" . }}
+                  key: route-registry-password
+            {{- include "route-registry.customCAEnvVars" . | nindent 12 }}
+          volumeMounts:
+            {{- include "route-registry.customCAVolumeMount" . | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "route-registry.fullname" . }}
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+      volumes:
+        - name: route-registry-results
+          emptyDir: {}
+        {{- include "route-registry.customCAVolume" . | nindent 8 }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
