@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { Page, Route } from '@playwright/test';
-import type { components } from '../../src/api-types';
+import type { components } from '../../src/token-service-api-types';
 import type {
   ListTokensResponse,
   CreateTokenResponse,
-} from '../../src/token-api-types';
+} from '../../src/token-service-api-bodies';
 
 export type MockToken = components['schemas']['Token'];
 
@@ -33,13 +33,13 @@ type EndpointHandler = (route: Route, url: URL) => Promise<void>;
  * adding an endpoint that reuses a method already in use here (as PATCH and
  * DELETE could, for example) can't be misrouted to the wrong handler.
  */
-export const mockTokenApi = async (
+export const mockTokenServiceApi = async (
   page: Page,
   initialTokens: MockToken[] = []
 ): Promise<MockToken[]> => {
   const tokens: ListTokensResponse = [...initialTokens];
 
-  const routes: Record<string, Partial<Record<string, EndpointHandler>>> = {
+  const handlers: Record<string, Partial<Record<string, EndpointHandler>>> = {
     '/token-service/api/v1/token': {
       GET: async (route) => {
         await route.fulfill({ json: tokens });
@@ -77,10 +77,10 @@ export const mockTokenApi = async (
   };
 
   await page.route(
-    (url) => url.pathname in routes,
+    (url) => url.pathname in handlers,
     async (route) => {
       const url = new URL(route.request().url());
-      const handler = routes[url.pathname][route.request().method()];
+      const handler = handlers[url.pathname][route.request().method()];
       if (!handler) {
         await route.continue();
         return;

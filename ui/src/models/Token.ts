@@ -1,5 +1,5 @@
 import { AbstractModel } from './AbstractModel';
-import type { components } from '../api-types';
+import type { components } from '../token-service-api-types';
 
 type TokenSchema = components['schemas']['Token'];
 

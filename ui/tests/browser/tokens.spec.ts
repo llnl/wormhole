@@ -1,19 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
-import { makeToken, mockTokenApi } from './fixtures';
+import { makeToken, mockTokenServiceApi } from './token-service-fixtures';
 
 test.describe('Tokens page', () => {
   test('shows an empty state when there are no tokens', async ({ page }) => {
-    await mockTokenApi(page, []);
-    await page.goto('/');
+    await mockTokenServiceApi(page, []);
+    await page.goto('/tokens');
 
     await expect(page.getByTestId('empty-tokens-message')).toBeVisible();
   });
 
   test('lists existing tokens', async ({ page }) => {
     const token = makeToken();
-    await mockTokenApi(page, [token]);
-    await page.goto('/');
+    await mockTokenServiceApi(page, [token]);
+    await page.goto('/tokens');
 
     await expect(page.getByTestId(`token-row-${token.name}`)).toBeVisible();
   });
@@ -22,8 +22,8 @@ test.describe('Tokens page', () => {
     page,
   }) => {
     const name = randomUUID();
-    await mockTokenApi(page, []);
-    await page.goto('/');
+    await mockTokenServiceApi(page, []);
+    await page.goto('/tokens');
 
     await page.getByTestId('create-token-button').click();
     await page.getByTestId('token-name-input').fill(name);
@@ -35,8 +35,8 @@ test.describe('Tokens page', () => {
 
   test('deletes a token', async ({ page }) => {
     const token = makeToken();
-    await mockTokenApi(page, [token]);
-    await page.goto('/');
+    await mockTokenServiceApi(page, [token]);
+    await page.goto('/tokens');
 
     const row = page.getByTestId(`token-row-${token.name}`);
     await expect(row).toBeVisible();
