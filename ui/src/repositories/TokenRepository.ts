@@ -4,7 +4,7 @@ import type {
   ListTokensResponse,
   CreateTokenResponse,
   AttestTokensRequest,
-} from '../token-api-types';
+} from '../token-service-api-bodies';
 
 export class TokenRepository extends AbstractRepository {
   public constructor() {

@@ -2,7 +2,7 @@ import m from 'mithril';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import Icon from './shared/Icon';
 
-const REPO_URL = 'https://github.com/LLNL/wormhole-token-service';
+const REPO_URL = 'https://github.com/LLNL/wormhole';
 const COPYRIGHT = 'Copyright 2026, Lawrence Livermore National Security, LLC';
 
 const Footer: m.Component = {

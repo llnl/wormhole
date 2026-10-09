@@ -31,7 +31,7 @@ test.describe.serial('Tokens page (live backend)', () => {
     page,
   }) => {
     tokenName = randomUUID();
-    await page.goto('/');
+    await page.goto('/tokens');
 
     await page.getByTestId('create-token-button').click();
     await page.getByTestId('token-name-input').fill(tokenName);
@@ -52,7 +52,7 @@ test.describe.serial('Tokens page (live backend)', () => {
 
   test('attests a token', async ({ page }) => {
     tokenName = randomUUID();
-    await page.goto('/');
+    await page.goto('/tokens');
 
     await page.getByTestId('create-token-button').click();
     await page.getByTestId('token-name-input').fill(tokenName);
