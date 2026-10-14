@@ -1,0 +1,74 @@
+image:
+  registry: docker.io
+  repository: rabbitmq
+  tag: 3.13-management
+  pullPolicy: IfNotPresent
+
+# Image variant: "official" or "redhat"
+# - official: Standard rabbitmq image (works on Kubernetes)
+# - redhat: Red Hat Hummingbird-based image (works on OpenShift with arbitrary UIDs)
+imageVariant: official
+
+# Red Hat image configuration (when imageVariant: redhat)
+redhat:
+  image:
+    registry: quay.io
+    repository: redhat/hummingbird-rabbitmq-4-3
+    tag: latest
+
+auth:
+  username: rabbit
+  password: password
+  erlangCookie: secretcookie
+  # Use existing secret - if not provided, chart creates one
+  # The secret must have keys: username, password, erlang-cookie
+  existingSecret: ""
+
+service:
+  type: ClusterIP
+  ports:
+    amqp: 5672
+    management: 15672
+    epmd: 4369
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 8Gi
+  storageClass: ""
+
+# RabbitMQ configuration
+# cluster_formation.peer_discovery_backend will be set to kubernetes (k8s)
+config:
+  # Additional RabbitMQ configuration
+  # Format: KEY = VALUE (rabbitmq.conf syntax)
+  extraConfig: ""
+
+resources:
+  limits: {}
+  requests: {}
+
+# Override fullname to ensure service name consistency
+fullnameOverride: ""
+
+# For parent chart global values
+global:
+  imagePullSecrets: []
+  nodeSelector: {}
+  affinity: {}
+  tolerations: []
+  # Pod security context varies by image variant
+  # official: UID 999, redhat: UID 65532 (works with arbitrary UIDs via group permissions)
+  podSecurityContext: {}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  serviceAccount:
+    create: true
+    name: ""

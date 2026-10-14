@@ -1,0 +1,49 @@
+{{- if .Values.envoy.scaler.enabled }}
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+metadata:
+  name: {{ include "holepunch.fullname" . }}-envoy
+  labels:
+    app.kubernetes.io/component: envoy
+    {{- include "holepunch.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: {{ include "holepunch.fullname" . }}-envoy
+    apiVersion: apps/v1
+  minReplicas: {{ .Values.envoy.scaler.minReplicas }}
+  maxReplicas: {{ .Values.envoy.scaler.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: {{ .Values.envoy.scaler.resourceName }}
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.envoy.scaler.averageUtilization }}
+{{- end }}
+
+---
+
+{{- if .Values.authScaler.enabled }}
+kind: HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+metadata:
+  name: {{ include "holepunch.fullname" . }}-auth
+  labels:
+    app.kubernetes.io/component: holepunch-auth
+    {{- include "holepunch.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: {{ include "holepunch.fullname" . }}-auth
+    apiVersion: apps/v1
+  minReplicas: {{ .Values.authScaler.minReplicas }}
+  maxReplicas: {{ .Values.authScaler.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: {{ .Values.authScaler.resourceName }}
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.authScaler.averageUtilization }}
+{{- end }}

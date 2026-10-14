@@ -1,0 +1,6 @@
+apiVersion: v2
+name: token-service
+description: Token Service for Wormhole.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

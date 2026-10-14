@@ -1,0 +1,6 @@
+apiVersion: v2
+name: route-registry
+description: Route Registry for Wormhole.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

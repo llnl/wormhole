@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "token-service.fullname" . }}
+  labels:
+    {{- include "token-service.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "token-service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "token-service.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.global.serviceAccount.name | default "default" }}
+      securityContext:
+        {{- toYaml .Values.global.podSecurityContext | nindent 8 }}
+      containers:
+        - name: token-service
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "token-service.fullname" . }}-config
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+          env:
+            - name: DYNACONF_DB__username
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "token-service.postgresSecretName" . }}
+                  key: token-service-username
+            - name: DYNACONF_DB__password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "token-service.postgresSecretName" . }}
+                  key: token-service-password
+            {{- include "token-service.customCAEnvVars" . | nindent 12 }}
+          volumeMounts:
+            {{- include "token-service.customCAVolumeMount" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.server.port }}
+              protocol: TCP
+          securityContext:
+            {{- toYaml .Values.global.containerSecurityContext | nindent 12 }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      initContainers:
+        - name: token-service-init
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["bash", "/app/scripts/migrate-db"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "token-service.fullname" . }}-config
+            - secretRef:
+                name: {{ .Values.existingSecret }}
+          env:
+            - name: DB_SERVICE_NAME
+              value: {{ include "token-service.postgresServiceName" . }}
+            - name: DYNACONF_DB__username
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "token-service.postgresSecretName" . }}
+                  key: token-service-username
+            - name: DYNACONF_DB__password
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "token-service.postgresSecretName" . }}
+                  key: token-service-password
+            {{- include "token-service.customCAEnvVars" . | nindent 12 }}
+          volumeMounts:
+            {{- include "token-service.customCAVolumeMount" . | nindent 12 }}
+      volumes:
+        {{- include "token-service.customCAVolume" . | nindent 8 }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

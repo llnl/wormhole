@@ -1,0 +1,27 @@
+dependencies:
+- name: nats
+  repository: https://nats-io.github.io/k8s/helm/charts/
+  version: 1.2.7
+- name: oauth2-proxy
+  repository: https://oauth2-proxy.github.io/manifests
+  version: 7.8.0
+- name: holepunch
+  repository: ""
+  version: 0.1.0
+- name: piko
+  repository: ""
+  version: 0.1.0
+- name: postgres
+  repository: ""
+  version: 0.1.0
+- name: rabbitmq
+  repository: ""
+  version: 0.1.0
+- name: route-registry
+  repository: ""
+  version: 0.1.0
+- name: token-service
+  repository: ""
+  version: 0.1.0
+digest: sha256:650c379f31b487dde853a5b7fee2c78f717280bfe8a7ef5af2e2c38ecb9e7d55
+generated: "2026-08-24T16:51:29.289330181-07:00"

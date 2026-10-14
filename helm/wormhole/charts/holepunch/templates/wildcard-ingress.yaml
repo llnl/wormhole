@@ -1,0 +1,42 @@
+{{- if .Values.wildcardHosts }}
+{{- if not (and .Values.openshift (index .Values.openshift "enabled")) }}
+{{- range $key, $value := .Values.wildcardHosts }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "holepunch.fullname" $ }}-wildcard-{{ $key }}
+  labels:
+    {{- include "holepunch.labels" $ | nindent 4 }}
+  {{- with $.Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $.Values.ingress.className }}
+  ingressClassName: {{ $.Values.ingress.className }}
+  {{- end }}
+  {{- if $.Values.ingress.tls.enabled }}
+  tls:
+  - hosts:
+    - {{ $value | quote }}
+    {{- if $.Values.ingress.tls.secretName }}
+    secretName: {{ $.Values.ingress.tls.secretName }}
+    {{- else }}
+    secretName: {{ include "holepunch.fullname" $ }}-wildcard-{{ $key }}-tls
+    {{- end }}
+  {{- end }}
+  rules:
+  - host: {{ $value | quote }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "holepunch.fullname" $ }}-envoy
+            port:
+              name: {{ $.Values.envoy.service.gateway.name }}
+{{- end }}
+{{- end }}
+{{- end }}

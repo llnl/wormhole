@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "holepunch.fullname" . }}-xds
+  labels:
+    {{- include "holepunch.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.xds.port }}
+      targetPort: {{ .Values.service.xds.port }}
+      protocol: TCP
+      name: {{ .Values.service.xds.name }}
+  selector:
+    app.kubernetes.io/name: {{ include "holepunch.name" . }}-xds
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "holepunch.fullname" . }}-auth
+  labels:
+    {{- include "holepunch.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.auth.port }}
+      targetPort: {{ .Values.service.auth.port }}
+      protocol: TCP
+      name: {{ .Values.service.auth.name }}
+  selector:
+    app.kubernetes.io/name: {{ include "holepunch.name" . }}-auth
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "holepunch.fullname" . }}-admin
+  labels:
+    {{- include "holepunch.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.admin.port }}
+      targetPort: {{ .Values.service.admin.port }}
+      protocol: TCP
+      name: {{ .Values.service.admin.name }}
+  selector:
+    app.kubernetes.io/name: {{ include "holepunch.name" . }}-admin
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "holepunch.fullname" . }}-envoy
+  labels:
+    {{- include "holepunch.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.envoy.service.type }}
+  ports:
+    - port: {{ .Values.envoy.service.gateway.port }}
+      targetPort: {{ .Values.envoy.service.gateway.port }}
+      protocol: TCP
+      name: {{ .Values.envoy.service.gateway.name }}
+    - port: {{ .Values.envoy.service.admin.port }}
+      targetPort: {{ .Values.envoy.service.admin.port }}
+      protocol: TCP
+      name: {{ .Values.envoy.service.admin.name }}
+  selector:
+    app.kubernetes.io/name: {{ include "holepunch.name" . }}-envoy
+    app.kubernetes.io/instance: {{ .Release.Name }}

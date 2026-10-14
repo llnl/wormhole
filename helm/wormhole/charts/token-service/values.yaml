@@ -1,0 +1,72 @@
+replicaCount: 1
+existingSecret: token-service-secrets
+
+image:
+  repository: ghcr.io/llnl/wormhole-token-service
+  tag: ""
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+dependencies:
+  postgres:
+    serviceName: ""
+    secretName: ""
+    protocol: postgresql
+    username: tokenServiceUser
+    port: 5432
+    database: tokenServiceDB
+
+config:
+  logLevel: INFO
+  rootPath: /token-service
+  server:
+    host: 0.0.0.0
+    port: 5000
+    loop: asyncio
+  auth:
+    authName: authlib_oidc
+    authlibOidc:
+      url: https://your-domain.com/token-service
+      discoveryUrl: https://your-auth-provider.com/.well-known/openid-configuration
+      sessionConfig:
+        sessionCookie: token-service-session
+        sameSite: strict
+        httpsOnly: true
+        maxAge: 43200
+        domain: your-domain.com
+      strategyName: GenericOIDC
+      redirectUri: /auth/callback
+    jwt:
+      alg: RS256
+      activeKid: "1"
+    oauthJwt:
+      jwksUrl: http://localhost:5000/.well-known/jwks.json
+  token:
+    sessionName: _session
+    sessionLifetimeSeconds: 43200
+    maxLifetimeDays: 30
+  otel:
+    tracesExporter: console
+    metricsExporter: console
+    logsExporter: console
+    otlpTracesEndpoint: ""
+    otlpMetricsEndpoint: ""
+    otlpLogsEndpoint: ""
+
+resources: {}
+
+#
+# Global values set at this level to facilitate templates/testing only.
+global:
+  imagePullSecrets: []
+  serviceAccount: {}

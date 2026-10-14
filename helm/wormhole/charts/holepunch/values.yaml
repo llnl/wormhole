@@ -1,0 +1,197 @@
+# Defines the HorizontalPodAutoscaler for the holepunch-auth service.
+authScaler:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  resourceName: memory
+  averageUtilization: 50
+
+# The cacher CronJob aims to maintain a hot cache of crucial
+# data (tokens + routes) aiming to improve gateway performance.
+cacher:
+  enabled: true
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+dependencies:
+  nats:
+    serviceName: ""
+    port: 4222
+    host: ""
+  oauth2Proxy:
+    serviceName: ""
+    port: 4180
+  tokenService:
+    serviceName: ""
+    port: 80
+  routeRegistry:
+    serviceName: ""
+    port: 5001
+
+existingSecret: holepunch-secrets
+
+# Redirect allowlist for OAuth/OIDC flows
+# Comma-separated list of allowed redirect URLs
+redirectAllowlist: ""
+
+env: {}
+
+#
+# Envoy web proxy deployment.
+envoy:
+  env: {}
+
+  image:
+    repository: docker.io/envoyproxy/envoy
+    tag: distroless-v1.38.3
+    pullPolicy: IfNotPresent
+
+  node:
+    cluster: wormhole-cluster
+    id: wormhole-node
+
+  # Enable OTEL collection using the target endpoint.
+  otel:
+    address: ""
+    port: 4317
+    # Required for gRPC/HTTP2 endpoint.
+    gRPC: true
+
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1000Mi
+    requests:
+      cpu: 400m
+      memory: 500Mi
+
+  # Defines the HorizontalPodAutoscaler for the Envoy proxy.
+  scaler:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    resourceName: memory
+    averageUtilization: 50
+
+  service:
+    type: ClusterIP
+    gateway:
+      port: 3128
+      name: gateway
+    admin:
+      port: 9901
+      name: admin
+
+image:
+  repository: ghcr.io/llnl/wormhole-holepunch
+  tag: latest
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# Ingress configuration for wildcard hosts
+# Note: Works on both OpenShift (converted to Routes) and standard Kubernetes
+ingress:
+  className: ""  # Ingress class (e.g., "nginx", "traefik", "" for OpenShift default)
+  annotations: {}
+  # Example annotations for OpenShift:
+  # haproxy.router.openshift.io/timeout: "120s"
+  # route.openshift.io/termination: "edge"
+  #
+  # Example annotations for Kubernetes nginx:
+  # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  tls:
+    enabled: true  # Enable TLS/HTTPS
+    secretName: ""  # Optional: specify a single secret for all wildcard hosts
+    # If not specified, generates per-host secret names: <release>-holepunch-wildcard-<key>-tls
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 2
+
+logLevel: info
+
+# Enable OTEL collection using the target endpoint.
+otel:
+  address: ""
+  port: 4317
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 3
+  periodSeconds: 5
+  timeoutSeconds: 2
+  failureThreshold: 5
+
+resources:
+  limits:
+    cpu: 400m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+# The static configuration offers a mechanism to inject route registry valid
+# configurations manually without registering them. Example:
+#  sources: [
+#    {
+#      id: "cc2bef1a-1757-42b9-adba-86338cb186e8",
+#      dst: "http://holepunch-pre-whoami.wst-gateway-pre.svc.cluster.local:2001",
+#      src: "https://whoami.apps.lc-pre.llnl.gov",
+#      rules: { "allowed": { groups: ["wst"] } }
+#    }
+#  ]
+staticConfig: {}
+
+service:
+  type: ClusterIP
+  xds:
+    port: 8080
+    name: xds
+  auth:
+    port: 8081
+    name: auth
+  admin:
+    port: 8082
+    name: admin
+
+# Enables support for websockets in the xds and auth deployments.
+websocket:
+  enabled: true
+  # Maximum duration for any stream established through the proxy.
+  # maxStreamDuration: 12h
+
+# Wildcard host routing for dynamic subdomain registration
+# Creates Ingress resources that route ALL matching subdomains to Holepunch/Envoy
+# Holepunch/Envoy performs actual routing based on Route Registry
+# Works on both OpenShift and standard Kubernetes!
+# Example: wildcardHosts:
+#   wormhole: "*.wormhole.example.com"
+wildcardHosts: {}
+
+# OpenShift-specific configuration for native Route resources
+# When enabled, creates OpenShift Routes instead of relying on Ingress->Route conversion
+openshift:
+  enabled: false  # Set to true to create native OpenShift Routes for wildcard hosts
+  route:
+    annotations: {}
+    # Example annotations:
+    # haproxy.router.openshift.io/timeout: "120s"
+    tls:
+      termination: edge  # Options: edge, passthrough, reencrypt
+      insecureEdgeTerminationPolicy: Redirect  # Options: Redirect, Allow, None
+
+#
+# Global values set at this level to facilitate templates/testing only.
+global:
+  imagePullSecrets: []
+  serviceAccount: {}

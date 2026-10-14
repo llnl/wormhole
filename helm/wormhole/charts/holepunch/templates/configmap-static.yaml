@@ -1,0 +1,11 @@
+{{- if .Values.staticConfig }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "holepunch.fullname" . }}-static-cfg
+  labels:
+    {{- include "holepunch.labels" . | nindent 4 }}
+data:
+  static.yaml: |
+    {{- toYaml .Values.staticConfig | nindent 4 }}
+{{- end }}

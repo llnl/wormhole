@@ -1,0 +1,16 @@
+{{- if and .Values.global.customCA.enabled .Values.global.customCA.createConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.global.customCA.configMapName }}
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.global.customCA.openshift.autoInject }}
+  labels:
+    config.openshift.io/inject-trusted-cabundle: "true"
+  {{- end }}
+data:
+  {{- if not .Values.global.customCA.openshift.autoInject }}
+  {{ .Values.global.customCA.key }}: |
+{{ .Values.global.customCA.certificate | indent 4 }}
+  {{- end }}
+{{- end }}
