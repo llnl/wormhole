@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { makeToken, mockTokenApi } from './fixtures';
+import { makeToken, mockTokenServiceApi } from './token-service-fixtures';
 
 test.describe('Token attestation', () => {
   test('walks through the acknowledgement before listing tokens', async ({
     page,
   }) => {
     const token = makeToken();
-    await mockTokenApi(page, [token]);
-    await page.goto('/');
+    await mockTokenServiceApi(page, [token]);
+    await page.goto('/tokens');
 
     await page.getByTestId('attest-tokens-button').click();
     await expect(
@@ -26,8 +26,8 @@ test.describe('Token attestation', () => {
   test('cancelling the acknowledgement does not show the token list', async ({
     page,
   }) => {
-    await mockTokenApi(page, [makeToken()]);
-    await page.goto('/');
+    await mockTokenServiceApi(page, [makeToken()]);
+    await page.goto('/tokens');
 
     await page.getByTestId('attest-tokens-button').click();
     await page.getByTestId('attest-cancel-button').click();
@@ -42,8 +42,8 @@ test.describe('Token attestation', () => {
   }) => {
     const keepMe = makeToken();
     const leaveAlone = makeToken();
-    await mockTokenApi(page, [keepMe, leaveAlone]);
-    await page.goto('/');
+    await mockTokenServiceApi(page, [keepMe, leaveAlone]);
+    await page.goto('/tokens');
 
     await page.getByTestId('attest-tokens-button').click();
     await page.getByTestId('attest-acknowledge-button').click();
@@ -65,8 +65,8 @@ test.describe('Token attestation', () => {
     page,
   }) => {
     const token = makeToken();
-    await mockTokenApi(page, [token]);
-    await page.goto('/');
+    await mockTokenServiceApi(page, [token]);
+    await page.goto('/tokens');
 
     await page.getByTestId('attest-tokens-button').click();
     await page.getByTestId('attest-acknowledge-button').click();
@@ -82,8 +82,8 @@ test.describe('Token attestation', () => {
   test('shows expired tokens as non-actionable', async ({ page }) => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const token = makeToken({ exp: nowSeconds - 3600 });
-    await mockTokenApi(page, [token]);
-    await page.goto('/');
+    await mockTokenServiceApi(page, [token]);
+    await page.goto('/tokens');
 
     await page.getByTestId('attest-tokens-button').click();
     await page.getByTestId('attest-acknowledge-button').click();
@@ -97,8 +97,8 @@ test.describe('Token attestation', () => {
   test('shows an empty message when there are no tokens to attest', async ({
     page,
   }) => {
-    await mockTokenApi(page, []);
-    await page.goto('/');
+    await mockTokenServiceApi(page, []);
+    await page.goto('/tokens');
 
     await page.getByTestId('attest-tokens-button').click();
     await page.getByTestId('attest-acknowledge-button').click();
@@ -108,8 +108,8 @@ test.describe('Token attestation', () => {
 
   test('closing the flow refreshes the main table', async ({ page }) => {
     const token = makeToken();
-    await mockTokenApi(page, [token]);
-    await page.goto('/');
+    await mockTokenServiceApi(page, [token]);
+    await page.goto('/tokens');
 
     await page.getByTestId('attest-tokens-button').click();
     await page.getByTestId('attest-acknowledge-button').click();

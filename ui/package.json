@@ -12,8 +12,10 @@
     "build": "tsc && vite build",
     "test": "playwright test",
     "test:integration": "playwright test --config=playwright.integration.config.ts",
-    "gen:api-types": "openapi-typescript http://localhost:${TOKEN_SERVICE_PORT:-5000}/openapi.json -o src/api-types.ts && npm run lint:fix",
-    "check:api-types": "npm run gen:api-types && git diff --exit-code -- src/api-types.ts",
+    "gen:api-types": "npm run gen:token-service-api-types && npm run gen:route-registry-api-types",
+    "gen:token-service-api-types": "openapi-typescript http://localhost:${TOKEN_SERVICE_PORT:-5000}/openapi.json -o src/token-service-api-types.ts && npm run lint:fix",
+    "gen:route-registry-api-types": "openapi-typescript http://localhost:${ROUTE_REGISTRY_PORT:-5001}/openapi.json -o src/route-registry-api-types.ts && npm run lint:fix",
+    "check:api-types": "npm run gen:api-types && git diff --exit-code -- src/token-service-api-types.ts src/route-registry-api-types.ts",
     "lint": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"*.config.ts\" &&eslint .",
     "lint:fix": "eslint . --fix && prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"*.config.ts\""
   },
