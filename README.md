@@ -1,9 +1,5 @@
 # Wormhole
 
-## Development
-
-See [`ui/README.md`](ui/README.md) for running and testing the UI.
-
 ## Governance
 
 Contributions are welcome. Contributors should look in `CONTRIBUTING.md` for project guidelines on how to create and structure pull requests.
