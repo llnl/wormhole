@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  helm-lint:
+    name: Helm Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.22.1
+
+      - name: Build chart dependencies
+        run: |
+          helm repo add nats https://nats-io.github.io/k8s/helm/charts/
+          helm repo add oauth2-proxy https://oauth2-proxy.github.io/manifests
+          helm dependency build helm/wormhole
+
+      - name: Lint with default values
+        run: helm lint --strict --with-subcharts helm/wormhole
+
+      - name: Lint with example overlay
+        run: helm lint --strict --with-subcharts helm/wormhole -f helm/wormhole/overlays/values.example.yaml
