@@ -1,505 +1,562 @@
-# Wormhole Helm Chart
+# Wormhole
 
-This consolidated Helm chart deploys the complete Wormhole platform, including all services and dependencies required for a production deployment.
+A secure tunnel and reverse proxy system for exposing HPC applications and services over HTTPS with enterprise authentication.
 
 ## Overview
 
-Wormhole is a secure tunnel and reverse proxy system for exposing HPC applications and services over HTTPS with enterprise authentication. This chart deploys:
+Wormhole provides secure, authenticated access to applications running on HPC systems through a combination of tunneling, authentication, and routing components.
 
-- **Token Service** - Authentication token and JWT management
-- **Route Registry** - Route registration and validation
-- **Holepunch** - Envoy-based authentication gateway and xDS control plane
-- **Piko** - WebSocket tunnel bastion
-- **PostgreSQL** - Database for Token Service and Route Registry
-- **RabbitMQ** - Message broker for Route Registry async tasks
-- **NATS** - Message broker for Holepunch caching
-- **OAuth2 Proxy** (optional) - Authentication gateway for web access
+### Core Components
 
-## Prerequisites
+- **Token Service** - Authentication token management and JWT issuance
+- **Route Registry** - Route registration, validation, and coordination
+- **Holepunch** - Envoy-based gateway with external authentication and xDS control plane
+- **Airlock** - Local reverse proxy for request validation and forwarding
+- **Wormhole CLI (`wh`)** - User-facing tool for opening tunnels
+- **Piko** - Tunnel bastion for WebSocket connections (external dependency)
 
-- Kubernetes 1.20+ or OpenShift 4.10+
+### Supporting Infrastructure
+
+- **PostgreSQL** - Persistent storage for Token Service and Route Registry
+- **RabbitMQ** - Asynchronous task queue for Route Registry
+- **NATS** - Route cache distribution for Holepunch
+- **OAuth2 Proxy** - Optional OAuth2/OIDC integration
+
+## Architecture
+
+### Request Flow
+
+```
+User Browser/Client
+    ↓
+Holepunch (Envoy Gateway + External Auth)
+    ↓
+Token Service (JWT validation)
+    ↓
+Piko Tunnel
+    ↓
+Airlock (local proxy)
+    ↓
+User Application
+```
+
+### Component Dependencies
+
+**Token Service:**
+- PostgreSQL (database: `tokenServiceDB`, schema: `tokenServiceUser`)
+- Generates and validates JWTs
+- Publishes JWKS for validation
+- Depends on: PostgreSQL
+
+**Route Registry:**
+- PostgreSQL (database: `routeRegistryDB`, schema: `routeRegistryUser`)
+- RabbitMQ (async task processing)
+- Validates route authorization metadata
+- Issues Piko connection JWTs
+- Notifies Holepunch of route changes
+- Depends on: PostgreSQL, RabbitMQ, Token Service (JWKS), Airlock (authz endpoint)
+
+**Holepunch:**
+- NATS (route cache)
+- Token Service (JWKS for JWT validation)
+- Route Registry (route data)
+- OAuth2 Proxy (optional, for OAuth flows)
+- Piko (tunnel connections)
+- Depends on: NATS, Token Service, Route Registry, OAuth2 Proxy (optional)
+
+**Airlock:**
+- Token Service (JWKS for JWT validation)
+- Serves `/-/airlock/authz.json` with authorization metadata
+- Depends on: Token Service (JWKS)
+
+**Wormhole CLI:**
+- Route Registry (route registration)
+- Piko (tunnel establishment)
+- Airlock (embedded, starts locally)
+- Depends on: Route Registry, Piko
+
+## Deployment
+
+### Prerequisites
+
+- Kubernetes 1.24+ or OpenShift 4.12+
 - Helm 3.8+
-- Persistent storage provisioner (for PostgreSQL, NATS, RabbitMQ)
-- OAuth/OIDC provider for authentication
-- DNS configuration for wildcard domains (if using dynamic routing)
+- PersistentVolume provisioner (for databases)
 
-## Installation
-
-### 1. Add Required Helm Repositories
+### Quick Start (Kubernetes)
 
 ```bash
-helm repo add nats https://nats-io.github.io/k8s/helm/charts/
-helm repo add oauth2-proxy https://oauth2-proxy.github.io/manifests
-helm repo update
+# Add the required secrets (see "Required Secrets" section)
+kubectl create namespace wormhole
+
+# Install with default values
+helm install wormhole ./helm/wormhole \
+  -n wormhole \
+  -f values.yaml
 ```
 
-### 2. Update Dependencies
+The default configuration:
+- Uses official PostgreSQL and RabbitMQ images
+- Deploys PostgreSQL, RabbitMQ, and NATS
+- Creates in-cluster services
+- **Works on Kubernetes without modifications**
 
-```bash
-cd helm/wormhole
-helm dependency update
+### OpenShift Deployment
+
+OpenShift requires specific configuration changes due to Security Context Constraints (SCC):
+
+#### Option 1: Use Red Hat Images (Recommended for Development)
+
+```yaml
+# overlays/values.openshift.yaml
+postgres:
+  imageVariant: redhat  # Use Red Hat UBI PostgreSQL image
+  # Red Hat image works with OpenShift's restricted-v2 SCC
+
+rabbitmq:
+  imageVariant: redhat  # Use Red Hat Hummingbird RabbitMQ image
+  # Red Hat image works with OpenShift's restricted-v2 SCC
 ```
 
-### 3. Create Secrets
-
-The Wormhole platform requires several secrets to be created before deployment:
-
-#### NATS Authentication
-
+Deploy:
 ```bash
-kubectl create secret generic nats-auth \
-  --from-literal=username=nats_user \
-  --from-literal=password=$(openssl rand -base64 32)
+helm install wormhole ./helm/wormhole \
+  -n wormhole \
+  -f values.yaml \
+  -f overlays/values.openshift.yaml
 ```
 
-#### PostgreSQL
+#### Option 2: Use Operators (Recommended for Production)
 
-```bash
-kubectl create secret generic postgres-secrets \
-  --from-literal=username=wormhole \
-  --from-literal=password=$(openssl rand -base64 32)
+Disable the built-in databases and use OpenShift operators:
+
+```yaml
+# overlays/values.openshift-prod.yaml
+postgres:
+  enabled: false
+
+rabbitmq:
+  enabled: false
+
+token-service:
+  dependencies:
+    postgres:
+      serviceName: "postgres-operator-postgres"
+      port: 5432
+
+route-registry:
+  dependencies:
+    postgres:
+      serviceName: "postgres-operator-postgres"
+      port: 5432
+    rabbitmq:
+      serviceName: "amq-broker-hdls-svc"
+      port: 5672
 ```
 
-#### RabbitMQ
+**Required Operators:**
+- Red Hat PostgreSQL Operator or Crunchy PostgreSQL
+- Red Hat AMQ Broker Operator
 
-```bash
-kubectl create secret generic rabbitmq-secrets \
-  --from-literal=username=wormhole \
-  --from-literal=password=$(openssl rand -base64 32)
+#### OpenShift Custom CA Trust
+
+If your OpenShift cluster uses custom CA certificates:
+
+```yaml
+# overlays/values.openshift.yaml
+global:
+  customCA:
+    enabled: true
+    configMapName: custom-ca-bundle
+    openshift:
+      autoInject: true  # Use OpenShift's CA injection
 ```
 
-#### Token Service
+Create the ConfigMap (OpenShift will populate it):
+```bash
+kubectl create configmap custom-ca-bundle \
+  --from-literal=ca-bundle.crt="" \
+  -n wormhole
 
-Generate JWT signing keys and create the secret:
+kubectl label configmap custom-ca-bundle \
+  config.openshift.io/inject-trusted-cabundle=true \
+  -n wormhole
+```
+
+### Chart Dependencies Summary
+
+| Component | Kubernetes Default | OpenShift Recommendation |
+|-----------|-------------------|--------------------------|
+| **PostgreSQL** | ✅ Official image | 🔶 Red Hat image OR disable + use operator |
+| **RabbitMQ** | ✅ Official image | 🔶 Red Hat image OR disable + use operator |
+| **NATS** | ✅ Official image | ✅ Works as-is |
+
+**Why the differences?**
+- Official PostgreSQL image expects UID 999; OpenShift assigns random UIDs
+- Red Hat PostgreSQL image uses UID 26 + `fix-permissions` for arbitrary UIDs
+- Official RabbitMQ image expects UID 999; OpenShift assigns random UIDs
+- Red Hat Hummingbird RabbitMQ image uses UID 65532 + group permissions for arbitrary UIDs
+- For production OpenShift, operators provide HA, backup, and enterprise support
+
+## Required Secrets
+
+Before deploying, create these secrets in the target namespace:
+
+**Quick Reference:**
+- `token-service-secrets` - JWT keys and OAuth credentials
+- `route-registry-secrets` - JWT keys, Piko secret, OAuth credentials
+- `holepunch-secrets` - NATS credentials and token service URL
+- `oauth2-proxy-secrets` - OAuth client and cookie secret (if enabled)
+- `postgres-secrets` - Database credentials (optional, chart creates defaults)
+- `rabbitmq-secrets` - Message queue credentials (optional, chart creates defaults)
+- `nats-auth` - NATS message bus credentials (**required**, no defaults)
+
+### 1. Token Service Secrets
+
+Currently, the admin API credentials are established in the database and must
+be established after Token Service and Postgres are launched.
 
 ```bash
-# Clone the wormhole repo and navigate to token-service
-cd token-service
-uv venv
-uv pip install -e .
-
-# Generate JWKS keys
-uv run token_service generate-jwks --write-settings --overwrite
-
-# Extract the generated keys from config/settings.local.toml
-# Create the secret with the JWT private key and admin credentials
 kubectl create secret generic token-service-secrets \
-  --from-literal=jwt-private-key="$(cat config/settings.local.toml | grep private_key_pem)" \
-  --from-literal=admin-username=admin \
-  --from-literal=admin-password=$(openssl rand -base64 32)
+  -n wormhole \
+  --from-literal=DYNACONF_AUTH__jwt__keys__1__private_pem="$(cat private-key.pem)" \
+  --from-literal=DYNACONF_AUTH__jwt__keys__1__public_pem="$(cat public-key.pem)" \
+  --from-literal=DYNACONF_AUTH__authlib_oidc__client_id="your-client-id" \
+  --from-literal=DYNACONF_AUTH__authlib_oidc__session_config__secret_key="$(openssl rand -hex 32)" \
+  --from-literal=DYNACONF_AUTH__authlib_oidc__client_secret="your-client-secret"
 ```
 
-#### Route Registry
+**Required keys:**
+- `DYNACONF_AUTH__authlib_oidc__session_config__secret_key` - FastAPI secret key (random 32-byte hex)
+- `DYNACONF_AUTH__jwt__1__private_key` - RSA private key for JWT signing
+- `DYNACONF_AUTH__jwt__1__public_key` - RSA public key for JWT verification
+- `DYNACONF_AUTH__authlib_oidc__client_id` - OAuth/OIDC client ID
+- `DYNACONF_AUTH__authlib_oidc__client_secret` - OAuth/OIDC client secret
+
+### 2. Route Registry Secrets
+
+Currently, the admin API credentials are established in the database and must
+be established after Route Registry and Postgres are launched.
 
 ```bash
-cd ../route-registry
-uv venv
-uv pip install -e .
-
-# Generate JWKS keys for Piko JWT issuance
-uv run route_registry generate-jwks --write-settings --overwrite
-
-# Create the secret
 kubectl create secret generic route-registry-secrets \
-  --from-literal=jwt-private-key="$(cat config/settings.local.toml | grep private_key_pem)" \
-  --from-literal=admin-username=admin \
-  --from-literal=admin-password=$(openssl rand -base64 32)
+  -n wormhole \
+  --from-literal=DYNACONF_AUTH__jwt__keys__1__private_pem="$(cat private-key.pem)" \
+  --from-literal=DYNACONF_AUTH__jwt__keys__1__public_pem="$(cat public-key.pem)" \
+  --from-literal=DYNACONF_AUTH__authlib_oidc__client_id="your-client-id" \
+  --from-literal=DYNACONF_AUTH__authlib_oidc__client_secret="your-client-secret" \
+  --from-literal=DYNACONF_AUTH__authlib_oidc__session_config__secret_key="$(openssl rand -hex 32)"
 ```
 
-#### OAuth2 Proxy (if enabled)
+**Required keys:**
+- `DYNACONF_AUTH__JWT__1__PRIVATE_KEY` - RSA private key for Piko JWT signing
+- `DYNACONF_AUTH__JWT__1__PUBLIC_KEY` - RSA public key
+- `DYNACONF_AUTH__AUTHLIB_OIDC__CLIENT_ID` - OAuth/OIDC client ID
+- `DYNACONF_AUTH__AUTHLIB_OIDC__CLIENT_SECRET` - OAuth/OIDC client secret
+
+### 3. Holepunch Secrets
+
+The registry secrets and token service admin token are set in their respective databases.
+Run the following command to create the secret with these placeholder values
+and update them once the credentials are added to the database.
+
+```bash
+kubectl create secret generic holepunch-secrets \
+  -n wormhole \
+  --from-literal=HOLEPUNCH_TOKEN_SERVICE_ADMIN="your-admin-token" \
+  --from-literal=HOLEPUNCH_REGISTRY_USERNAME="admin" \
+  --from-literal=HOLEPUNCH_REGISTRY_PASSWORD="your-admin-password"
+```
+
+**Required keys:**
+- `HOLEPUNCH_TOKEN_SERVICE_ADMIN` - Token Service admin token for subtokens
+- `HOLEPUNCH_REGISTRY_USERNAME` - Route Registry admin username
+- `HOLEPUNCH_REGISTRY_PASSWORD` - Route Registry admin password
+
+### 4. OAuth2 Proxy Secrets (if enabled)
 
 ```bash
 kubectl create secret generic oauth2-proxy-secrets \
-  --from-literal=client-id=<your-oauth-client-id> \
-  --from-literal=client-secret=<your-oauth-client-secret> \
-  --from-literal=cookie-secret=$(openssl rand -base64 32)
+  -n wormhole \
+  --from-literal=client-id="your-oauth-client-id" \
+  --from-literal=client-secret="your-oauth-client-secret" \
+  --from-literal=cookie-secret="$(openssl rand -base64 32 | head -c 32)"
 ```
 
-#### Holepunch
+**Required keys:**
+- `client-id` - OAuth2/OIDC client ID
+- `client-secret` - OAuth2/OIDC client secret
+- `cookie-secret` - Cookie encryption secret (must be exactly 16, 24, or 32 characters)
 
+**Cookie secret generation (must be exactly 16, 24, or 32 characters):**
 ```bash
-# NATS credentials for Holepunch services
-kubectl create secret generic holepunch-secrets \
-  --from-literal=nats-username=nats_user \
-  --from-literal=nats-password=<same-as-nats-auth-password>
+# 32 characters (recommended)
+openssl rand -base64 32 | head -c 32
+
+# 24 characters
+openssl rand -base64 32 | head -c 24
+
+# 16 characters
+openssl rand -base64 32 | head -c 16
+
+# Alternative: Generate alphanumeric string of exact length
+cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 32
 ```
 
-### 4. Customize Configuration
+**Note:** The cookie secret must be exactly 16, 24, or 32 **characters** (bytes) for AES encryption. Commands like `openssl rand -hex 32` produce 64 characters (too long) and `openssl rand -base64 32` produces 44 characters (also too long).
 
-Copy the example overlay and customize for your environment:
+### 5. Infrastructure Secrets
+
+These secrets are required for PostgreSQL, RabbitMQ, and NATS. The chart creates default database secrets, but for production you should create your own:
 
 ```bash
-cp overlays/values.example.yaml overlays/values.myenv.yaml
+# PostgreSQL credentials
+kubectl create secret generic postgres-secrets \
+  -n wormhole \
+  --from-literal=username="wormhole" \
+  --from-literal=password="$(openssl rand -hex 16)" \
+  --from-literal=postgres-password="$(openssl rand -hex 16)" \
+  --from-literal=token-service-username="tokenServiceUser" \
+  --from-literal=token-service-password="$(openssl rand -hex 16)" \
+  --from-literal=route-registry-username="routeRegistryUser" \
+  --from-literal=route-registry-password="$(openssl rand -hex 16)"
+
+# RabbitMQ credentials
+kubectl create secret generic rabbitmq-secrets \
+  -n wormhole \
+  --from-literal=username="rabbit" \
+  --from-literal=password="$(openssl rand -hex 16)" \
+  --from-literal=erlang-cookie="$(openssl rand -hex 32)"
+
+# NATS credentials
+kubectl create secret generic nats-auth \
+  -n wormhole \
+  --from-literal=username="nats_user" \
+  --from-literal=password="$(openssl rand -hex 16)"
 ```
 
-Edit `overlays/values.myenv.yaml` to configure:
+Then reference them in values:
+```yaml
+postgres:
+  auth:
+    existingSecret: postgres-secrets
 
-- **Image repositories** - Update to point to your container registry
-- **Ingress/Route hostnames** - Set your domain names
-- **OAuth/OIDC provider** - Configure your authentication provider
-- **Resource limits** - Adjust based on your cluster capacity
-- **OpenTelemetry endpoints** - Configure observability if available
-- **Storage classes** - Set appropriate storage for your cluster
+rabbitmq:
+  auth:
+    existingSecret: rabbitmq-secrets
 
-### 5. Deploy
-
-Deploy using the base values and your custom overlay:
-
-```bash
-helm install wormhole . \
-  -f values.yaml \
-  -f overlays/values.myenv.yaml \
-  --create-namespace \
-  --namespace wormhole
-```
-
-Or upgrade an existing deployment:
-
-```bash
-helm upgrade wormhole . \
-  -f values.yaml \
-  -f overlays/values.myenv.yaml \
-  --namespace wormhole
+# Note: NATS secret name is hardcoded in values.yaml as 'nats-auth'
+# No additional configuration needed - just create the secret
 ```
 
 ## Configuration
 
 ### Key Configuration Options
 
-#### Image Configuration
-
-All service images can be customized in the overlay:
-
+**Global Settings:**
 ```yaml
-token-service:
-  image:
-    repository: ghcr.io/llnl/wormhole-token-service
-    tag: "v0.2.0"
-    pullPolicy: IfNotPresent
+global:
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  # Custom CA trust (for OpenShift or corporate environments)
+  customCA:
+    enabled: false
+    configMapName: custom-ca-bundle
 ```
 
-#### Authentication
-
-Configure OAuth/OIDC for web UI and API access:
-
+**Database Configuration:**
 ```yaml
-token-service:
-  config:
-    auth:
-      authlibOidc:
-        url: "https://wormhole.example.com/token-service"
-        discoveryUrl: "https://auth.example.com/.well-known/openid-configuration"
-      oauthJwt:
-        jwksUrl: "https://auth.example.com/oauth/jwks"
+postgres:
+  enabled: true
+  imageVariant: official  # or "redhat" for OpenShift
+  persistence:
+    enabled: true
+    size: 8Gi
+  
+rabbitmq:
+  enabled: true
+  imageVariant: official  # or "redhat" for OpenShift
+  persistence:
+    enabled: true
+    size: 8Gi
 ```
 
-#### Ingress/Routes
-
-Configure hostnames and TLS:
-
+**Service Configuration:**
 ```yaml
 token-service:
+  enabled: true
+  replicaCount: 1
   ingress:
     enabled: true
-    className: ""
-    annotations:
-      # For OpenShift
-      route.openshift.io/termination: edge
     hosts:
-      - host: wormhole.example.com
+      - host: token-service.example.com
         paths:
           - path: /token-service
             pathType: Prefix
+
+route-registry:
+  enabled: true
+  replicaCount: 1
+  worker:
+    replicaCount: 1
+  ingress:
+    enabled: true
+    hosts:
+      - host: route-registry.example.com
 ```
 
-#### Wildcard Routing
-
-Configure wildcard domains for user applications:
-
+**Holepunch Wildcard Routing:**
 ```yaml
 holepunch:
   wildcardHosts:
-    apps: "*.apps.wormhole.example.com"
-    services: "*.services.wormhole.example.com"
-```
-
-#### Resource Limits
-
-Adjust resources based on expected load:
-
-```yaml
-token-service:
-  resources:
-    requests:
-      cpu: 300m
-      memory: 512Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-```
-
-#### Observability
-
-Configure OpenTelemetry endpoints:
-
-```yaml
-token-service:
-  config:
-    otel:
-      tracesExporter: "otlp"
-      metricsExporter: "otlp"
-      logsExporter: "otlp"
-      otlpTracesEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
-```
-
-### Component-Specific Configuration
-
-#### NATS
-
-- **Cluster size**: Default 3 replicas for HA
-- **Persistence**: Uses PVC for JetStream file store
-- **Resources**: Adjust based on message volume
-
-#### PostgreSQL
-
-- **Image variant**: Choose `upstream` or `redhat`
-- **Persistence**: Requires PVC for database storage
-- **Credentials**: Provided via `postgres-secrets` secret
-
-#### RabbitMQ
-
-- **Image variant**: Choose `upstream` or `redhat`
-- **Celery compatibility**: Includes deprecated queue feature flag
-- **Credentials**: Provided via `rabbitmq-secrets` secret
-
-#### Piko
-
-- **JWT authentication**: Validates tunnel connections using Route Registry JWKS
-- **Connection persistence**: `disable_disconnect_on_expiry: true` keeps tunnels alive
-
-#### OAuth2 Proxy
-
-- **Optional**: Can be disabled if authentication is handled externally
-- **Cookie domain**: Must match your service domain for SSO
-- **Whitelist domains**: Configure all subdomain patterns
-
-#### Holepunch
-
-- **Autoscaling**: HPA for both Envoy and auth service
-- **Log level**: Set to `debug` for troubleshooting, `info` for production
-- **Cacher**: CronJob for hot-caching tokens and routes
-
-## Architecture
-
-```
-Browser → OAuth2 Proxy → Holepunch (Envoy + Auth) → Piko Tunnel → Airlock → User Application
-                              ↓                           ↓
-                        Token Service            Route Registry
-                              ↓                           ↓
-                          PostgreSQL                  RabbitMQ
-                              ↓
-                            NATS
-```
-
-### Service Dependencies
-
-- **Holepunch** depends on: Token Service (auth), Route Registry (routes), NATS (cache), Piko (tunnels)
-- **Route Registry** depends on: Token Service (JWT validation), PostgreSQL (persistence), RabbitMQ (async tasks), Piko (JWT issuance)
-- **Token Service** depends on: PostgreSQL (persistence)
-- **Piko** depends on: Route Registry (JWKS for tunnel auth)
-
-## Deployment Patterns
-
-### Development/Testing
-
-For development environments, you can reduce resource requirements and disable optional components:
-
-```yaml
-# Disable autoscaling
-holepunch:
-  envoy:
-    scaler:
-      enabled: false
-      minReplicas: 1
-  authScaler:
-    enabled: false
-
-# Reduce resources
-nats:
-  config:
-    cluster:
-      replicas: 1
-```
-
-### Production
-
-Production deployments should include:
-
-- Multiple replicas with autoscaling
-- Persistent storage with backups
-- Resource limits and monitoring
-- OAuth2 Proxy for centralized auth
-- TLS termination at ingress/route
-- OpenTelemetry for observability
-
-### OpenShift
-
-For OpenShift deployments:
-
-```yaml
-# Enable OpenShift-specific features
-holepunch:
-  openshift:
+    wormhole: "*.wormhole.example.com"
+  ingress:
     enabled: true
-    route:
-      tls:
-        termination: edge
-
-# Use RedHat certified images
-postgres:
-  imageVariant: redhat
-  redhat:
-    image:
-      registry: registry.redhat.io
-      repository: rhel9/postgresql-16
-
-rabbitmq:
-  imageVariant: redhat
-  redhat:
-    image:
-      registry: registry.redhat.io
-      repository: rhel9/rabbitmq-39
-
-# Disable OAuth2 Proxy security context
-oauth2-proxy:
-  securityContext:
-    enabled: false
+    tls:
+      enabled: true
 ```
 
-## Post-Installation
+See `values.yaml` for complete configuration options.
 
-### 1. Verify Deployment
+## Development
 
-```bash
-# Check pod status
-kubectl get pods -n wormhole
-
-# Check services
-kubectl get svc -n wormhole
-
-# Check ingress/routes
-kubectl get ingress -n wormhole
-# or for OpenShift
-oc get routes -n wormhole
-```
-
-### 2. Initialize Database
-
-The Token Service and Route Registry will automatically run database migrations on startup.
-
-### 3. Create Admin User
-
-Use the Token Service API or UI to create your first admin user and tokens.
-
-### 4. Configure DNS
-
-Ensure DNS records point to your ingress/route endpoints:
-
-- `wormhole.example.com` → Token Service, Route Registry
-- `tunnel.wormhole.example.com` → Piko
-- `auth.wormhole.example.com` → OAuth2 Proxy
-- `*.apps.wormhole.example.com` → Holepunch (wildcard)
-
-### 5. Test Connectivity
+### Testing Helm Charts
 
 ```bash
-# Test Token Service health
-curl https://wormhole.example.com/token-service/.well-known/jwks.json
+# Render templates locally
+helm template wormhole ./helm/wormhole -f values.yaml
 
-# Test Route Registry health
-curl https://wormhole.example.com/route-registry/api/v1/healthz
-
-# Test Piko tunnel
-curl https://tunnel.wormhole.example.com/healthz
-```
-
-## Upgrading
-
-### Standard Upgrade
-
-```bash
-helm upgrade wormhole . \
+# Test with OpenShift settings
+helm template wormhole ./helm/wormhole \
   -f values.yaml \
-  -f overlays/values.myenv.yaml \
-  --namespace wormhole
-```
+  --set postgres.imageVariant=redhat \
+  --set rabbitmq.imageVariant=redhat
 
-### Database Migrations
-
-Database migrations run automatically on Pod startup via init containers.
-
-### Rolling Back
-
-```bash
-helm rollback wormhole -n wormhole
+# Validate chart
+helm lint ./helm/wormhole
 ```
 
 ## Troubleshooting
 
-### Pods Not Starting
+### PostgreSQL Init Issues
 
-1. Check pod logs: `kubectl logs -n wormhole <pod-name>`
-2. Check events: `kubectl get events -n wormhole --sort-by='.lastTimestamp'`
-3. Verify secrets exist: `kubectl get secrets -n wormhole`
-4. Check resource quotas: `kubectl describe resourcequota -n wormhole`
+If PostgreSQL initialization fails, check:
+```bash
+# View init logs
+kubectl logs -n wormhole wormhole-postgres-0 -c postgresql
 
-### Database Connection Issues
+# Check if databases were created
+kubectl exec -it -n wormhole wormhole-postgres-0 -- \
+  psql -U wormhole -d postgres -c "\l"
 
-1. Verify PostgreSQL is running: `kubectl get pods -n wormhole | grep postgres`
-2. Check credentials: `kubectl get secret postgres-secrets -n wormhole -o yaml`
-3. Test connection from service pod:
-   ```bash
-   kubectl exec -n wormhole deploy/token-service -- \
-     psql "postgresql://username:password@postgres:5432/wormhole"
-   ```
+# Check if schemas exist
+kubectl exec -it -n wormhole wormhole-postgres-0 -- \
+  psql -U wormhole -d tokenServiceDB -c "\dn"
+```
 
-### Authentication Failures
-
-1. Verify Token Service JWKS is accessible:
-   ```bash
-   curl https://wormhole.example.com/token-service/.well-known/jwks.json
-   ```
-2. Check OAuth2 Proxy configuration and credentials
-3. Verify OIDC provider discovery URL is accessible
-4. Check Holepunch logs for auth errors
-
-### Tunnel Connection Issues
-
-1. Verify Piko is accessible: `curl https://tunnel.wormhole.example.com/healthz`
-2. Check Route Registry can issue Piko JWTs
-3. Verify JWKS endpoint in Piko configuration matches Route Registry
-4. Check firewall rules allow WebSocket connections
-
-### Route Registry Worker Issues
-
-1. Verify RabbitMQ is running and accessible
-2. Check worker logs: `kubectl logs -n wormhole deploy/route-registry-worker`
-3. Check Celery queue status:
-   ```bash
-   kubectl exec -n wormhole deploy/route-registry-worker -- celery inspect active
-   ```
-
-## Uninstall
+### RabbitMQ Clustering Issues
 
 ```bash
-# Remove Helm release
-helm uninstall wormhole -n wormhole
+# Check RabbitMQ logs
+kubectl logs -n wormhole wormhole-rabbitmq-0
 
-# Delete PVCs (if you want to remove data)
-kubectl delete pvc -n wormhole --all
+# Check cluster status
+kubectl exec -it -n wormhole wormhole-rabbitmq-0 -- \
+  rabbitmqctl cluster_status
+```
 
-# Delete namespace
-kubectl delete namespace wormhole
+### Holepunch Route Issues
+
+```bash
+# Check route cache
+kubectl logs -n wormhole -l app.kubernetes.io/name=holepunch -c holepunch-cacher
+
+# Check xDS control plane
+kubectl logs -n wormhole -l app.kubernetes.io/name=holepunch -c holepunch-xds
+
+# View current routes
+kubectl exec -it -n wormhole deploy/wormhole-holepunch-admin -- \
+  curl http://localhost:8082/api/v1/state/ctls
+```
+
+### OpenShift Permission Issues
+
+If pods fail to start on OpenShift:
+```bash
+# Check SCC assignment
+oc describe pod <pod-name> -n wormhole | grep scc
+
+# Verify should be "restricted-v2"
+# If not, check securityContext settings
+
+# For PostgreSQL and RabbitMQ with Red Hat images, ensure:
+postgres:
+  imageVariant: redhat
+
+rabbitmq:
+  imageVariant: redhat
+```
+
+## Production Considerations
+
+### High Availability
+
+For production deployments:
+
+1. **Use external databases** - Managed PostgreSQL and RabbitMQ
+2. **Increase replica counts** - Scale horizontally
+   ```yaml
+   token-service:
+     replicaCount: 3
+   route-registry:
+     replicaCount: 2
+     worker:
+       replicaCount: 3
+   ```
+3. **Enable autoscaling** - For Holepunch
+   ```yaml
+   holepunch:
+     envoy:
+       scaler:
+         enabled: true
+         maxReplicas: 10
+   ```
+4. **Configure resource limits** - Set appropriate requests/limits
+5. **Set up monitoring** - OpenTelemetry exporters configured by default
+
+### Backup and Recovery
+
+**PostgreSQL:**
+- Use operator-provided backup solutions (Crunchy, CloudNativePG)
+- Or configure pg_dump schedules via CronJobs
+
+**Configuration Backup:**
+```bash
+# Export current values
+helm get values wormhole -n wormhole > wormhole-values-backup.yaml
+
+# Backup secrets
+kubectl get secrets -n wormhole -o yaml > wormhole-secrets-backup.yaml
+```
+
+### Monitoring
+
+Services expose OpenTelemetry metrics by default:
+```yaml
+# Configure OTLP endpoints
+token-service:
+  config:
+    otel:
+      tracesExporter: otlp
+      otlpTracesEndpoint: "http://otel-collector:4317"
+
+route-registry:
+  config:
+    otel:
+      tracesExporter: otlp
+      otlpTracesEndpoint: "http://otel-collector:4317"
 ```
 
 ## Support
