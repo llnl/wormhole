@@ -27,6 +27,9 @@ dependencies:
   oauth2Proxy:
     serviceName: ""
     port: 4180
+    # External URL for oauth2-proxy (used for HOLEPUNCH_OAUTH_REDIRECT_URL)
+    # This should be set to the public-facing URL that users access
+    externalUrl: ""
   tokenService:
     serviceName: ""
     port: 80
