@@ -46,10 +46,12 @@ spec:
             {{- include "token-service.customCAVolumeMount" . | nindent 12 }}
             {{- if .Values.kerberos.enabled }}
             - name: kerberos-keytab
-              mountPath: {{ .Values.kerberos.keytabMountPath }}
+              mountPath: {{ printf "%s/%s" .Values.kerberos.keytabMountPath .Values.kerberos.keytabFilename }}
+              subPath: {{ .Values.kerberos.keytabFilename }}
               readOnly: true
             - name: kerberos-config
-              mountPath: {{ .Values.kerberos.krb5ConfigMountPath }}
+              mountPath: {{ printf "%s/%s" .Values.kerberos.krb5ConfigMountPath .Values.kerberos.krb5ConfigFilename }}
+              subPath: {{ .Values.kerberos.krb5ConfigFilename }}
               readOnly: true
             {{- end }}
           ports:
