@@ -44,6 +44,16 @@ spec:
             {{- include "token-service.customCAEnvVars" . | nindent 12 }}
           volumeMounts:
             {{- include "token-service.customCAVolumeMount" . | nindent 12 }}
+            {{- if .Values.kerberos.enabled }}
+            - name: kerberos-keytab
+              mountPath: {{ printf "%s/%s" .Values.kerberos.keytabMountPath .Values.kerberos.keytabFilename }}
+              subPath: {{ .Values.kerberos.keytabFilename }}
+              readOnly: true
+            - name: kerberos-config
+              mountPath: {{ printf "%s/%s" .Values.kerberos.krb5ConfigMountPath .Values.kerberos.krb5ConfigFilename }}
+              subPath: {{ .Values.kerberos.krb5ConfigFilename }}
+              readOnly: true
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.config.server.port }}
@@ -82,6 +92,20 @@ spec:
             {{- include "token-service.customCAVolumeMount" . | nindent 12 }}
       volumes:
         {{- include "token-service.customCAVolume" . | nindent 8 }}
+        {{- if .Values.kerberos.enabled }}
+        - name: kerberos-keytab
+          secret:
+            secretName: {{ .Values.existingSecret }}
+            items:
+              - key: {{ .Values.kerberos.keytabFilename }}
+                path: {{ .Values.kerberos.keytabFilename }}
+        - name: kerberos-config
+          configMap:
+            name: {{ .Values.kerberos.configMapName }}
+            items:
+              - key: {{ .Values.kerberos.krb5ConfigFilename }}
+                path: {{ .Values.kerberos.krb5ConfigFilename }}
+        {{- end }}
       {{- with .Values.global.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

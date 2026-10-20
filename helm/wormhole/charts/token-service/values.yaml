@@ -63,6 +63,17 @@ config:
     otlpMetricsEndpoint: ""
     otlpLogsEndpoint: ""
 
+# Kerberos authentication
+kerberos:
+  enabled: false
+  configMapName: token-service-krb5-config  # ConfigMap containing krb5.conf
+  keytabMountPath: /etc/kerberos
+  keytabFilename: keytab
+  krb5ConfigMountPath: /etc/kerberos
+  krb5ConfigFilename: krb5.conf
+  serviceName: ""  # e.g., "HTTP/wormhole.example.com@EXAMPLE.GOV"
+  allowedRealms: []  # e.g., ["EXAMPLE.GOV"]
+
 resources: {}
 
 #

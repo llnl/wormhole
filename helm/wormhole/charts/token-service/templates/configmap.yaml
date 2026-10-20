@@ -50,3 +50,16 @@ data:
   DYNACONF_TOKEN__session_name: {{ .Values.config.token.sessionName | quote }}
   DYNACONF_TOKEN__session_lifetime_seconds: {{ .Values.config.token.sessionLifetimeSeconds | quote }}
   DYNACONF_TOKEN__max_lifetime_days: {{ .Values.config.token.maxLifetimeDays | quote }}
+
+  {{- if .Values.kerberos.enabled }}
+  # Kerberos authentication
+  DYNACONF_AUTH__kerberos__enabled: "true"
+  DYNACONF_AUTH__kerberos__keytab: {{ printf "%s/%s" .Values.kerberos.keytabMountPath .Values.kerberos.keytabFilename | quote }}
+  DYNACONF_AUTH__kerberos__krb5_config: {{ printf "%s/%s" .Values.kerberos.krb5ConfigMountPath .Values.kerberos.krb5ConfigFilename | quote }}
+  {{- if .Values.kerberos.serviceName }}
+  DYNACONF_AUTH__kerberos__service_name: {{ .Values.kerberos.serviceName | quote }}
+  {{- end }}
+  {{- if .Values.kerberos.allowedRealms }}
+  DYNACONF_AUTH__kerberos__allowed_realms: {{ .Values.kerberos.allowedRealms | toJson | quote }}
+  {{- end }}
+  {{- end }}
