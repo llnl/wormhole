@@ -88,14 +88,6 @@ spec:
             {{- include "token-service.customCAEnvVars" . | nindent 12 }}
           volumeMounts:
             {{- include "token-service.customCAVolumeMount" . | nindent 12 }}
-            {{- if .Values.kerberos.enabled }}
-            - name: kerberos-keytab
-              mountPath: {{ .Values.kerberos.keytabMountPath }}
-              readOnly: true
-            - name: kerberos-config
-              mountPath: {{ .Values.kerberos.krb5ConfigMountPath }}
-              readOnly: true
-            {{- end }}
       volumes:
         {{- include "token-service.customCAVolume" . | nindent 8 }}
         {{- if .Values.kerberos.enabled }}
