@@ -66,6 +66,7 @@ config:
 # Kerberos authentication
 kerberos:
   enabled: false
+  secretName: token-service-kerberos  # Secret containing keytab
   configMapName: token-service-krb5-config  # ConfigMap containing krb5.conf
   keytabMountPath: /etc/kerberos
   keytabFilename: keytab
