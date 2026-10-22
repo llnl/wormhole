@@ -223,23 +223,27 @@ kubectl create secret generic token-service-secrets \
   --from-literal=DYNACONF_AUTH__jwt__keys__1__public_pem="$(cat public-key.pem)" \
   --from-literal=DYNACONF_AUTH__authlib_oidc__client_id="your-client-id" \
   --from-literal=DYNACONF_AUTH__authlib_oidc__session_config__secret_key="$(openssl rand -hex 32)" \
-  --from-literal=DYNACONF_AUTH__authlib_oidc__client_secret="your-client-secret" \
-  --from-file=keytab=/path/to/service.keytab
+  --from-literal=DYNACONF_AUTH__authlib_oidc__client_secret="your-client-secret"
 ```
 
 **Required keys:**
 - `DYNACONF_AUTH__authlib_oidc__session_config__secret_key` - FastAPI secret key (random 32-byte hex)
-- `DYNACONF_AUTH__jwt__1__private_key` - RSA private key for JWT signing
-- `DYNACONF_AUTH__jwt__1__public_key` - RSA public key for JWT verification
+- `DYNACONF_AUTH__jwt__keys__1__private_pem` - RSA private key for JWT signing
+- `DYNACONF_AUTH__jwt__keys__1__public_pem` - RSA public key for JWT verification
 - `DYNACONF_AUTH__authlib_oidc__client_id` - OAuth/OIDC client ID
 - `DYNACONF_AUTH__authlib_oidc__client_secret` - OAuth/OIDC client secret
-- `keytab` - Kerberos keytab file (optional, for Kerberos authentication)
 
 **Optional: Kerberos Authentication**
 
-If using Kerberos authentication, also create a ConfigMap for the krb5.conf file:
+If using Kerberos authentication, create a separate secret and ConfigMap:
 
 ```bash
+# Create Kerberos secret with keytab
+kubectl create secret generic token-service-kerberos \
+  -n wormhole \
+  --from-file=keytab=/path/to/service.keytab
+
+# Create ConfigMap with krb5.conf
 kubectl create configmap token-service-krb5-config \
   -n wormhole \
   --from-file=krb5.conf=/path/to/krb5.conf
@@ -251,28 +255,13 @@ Then enable and configure Kerberos in your values:
 token-service:
   kerberos:
     enabled: true
+    secretName: token-service-kerberos
+    configMapName: token-service-krb5-config
     serviceName: "HTTP/wormhole.example.com@EXAMPLE.GOV"
     allowedRealms: ["EXAMPLE.GOV"]
 ```
 
-**Note:** For development/testing, you can create the secret and ConfigMap with empty placeholder files using `/dev/null`:
-
-```bash
-# Create secret with empty keytab
-kubectl create secret generic token-service-secrets \
-  -n wormhole \
-  --from-literal=DYNACONF_AUTH__jwt__keys__1__private_pem="$(cat private-key.pem)" \
-  --from-literal=DYNACONF_AUTH__jwt__keys__1__public_pem="$(cat public-key.pem)" \
-  --from-literal=DYNACONF_AUTH__authlib_oidc__client_id="your-client-id" \
-  --from-literal=DYNACONF_AUTH__authlib_oidc__session_config__secret_key="$(openssl rand -hex 32)" \
-  --from-literal=DYNACONF_AUTH__authlib_oidc__client_secret="your-client-secret" \
-  --from-file=keytab=/dev/null
-
-# Create ConfigMap with empty krb5.conf
-kubectl create configmap token-service-krb5-config \
-  -n wormhole \
-  --from-file=krb5.conf=/dev/null
-```
+**Important:** Use `kubectl create secret --from-file` (not `--from-literal`) for the keytab to ensure proper binary encoding. The keytab must remain a binary file and cannot be exported as an environment variable.
 
 ### 2. Route Registry Secrets
 
