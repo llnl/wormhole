@@ -208,3 +208,7 @@ route-registry:
 token-service:
   enabled: true
 
+# UI deployment (see charts/ui/values.yaml)
+ui:
+  enabled: true
+

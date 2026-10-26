@@ -195,7 +195,7 @@ token-service:
 
   image:
     repository: ghcr.io/llnl/wormhole-token-service
-    tag: "v0.2.0"
+    tag: "v0.2.5"
     pullPolicy: IfNotPresent
 
   resources:
@@ -244,6 +244,28 @@ token-service:
       otlpTracesEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
       otlpMetricsEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
       otlpLogsEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+
+# UI configuration
+ui:
+  ingress:
+    enabled: true
+    className: ""
+    annotations:
+      # For OpenShift Routes
+      # route.openshift.io/termination: edge
+    # Must be the host token-service and route-registry are served on: the UI
+    # calls /token-service and /route-registry on its own origin.
+    hosts:
+      - host: wormhole.example.com
+
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      # nginx starts a worker (~2 MiB) per node CPU
+      memory: 256Mi
 
 # NATS message broker configuration
 nats:

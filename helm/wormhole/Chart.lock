@@ -23,5 +23,8 @@ dependencies:
 - name: token-service
   repository: ""
   version: 0.1.0
-digest: sha256:650c379f31b487dde853a5b7fee2c78f717280bfe8a7ef5af2e2c38ecb9e7d55
-generated: "2026-08-24T16:51:29.289330181-07:00"
+- name: ui
+  repository: ""
+  version: 0.1.0
+digest: sha256:fa569ede8b7bb60de2a98f73fc4377aff6d5f99ddb7a2f611b4d57b22ec23c1a
+generated: "2026-10-26T15:43:22.852436253Z"

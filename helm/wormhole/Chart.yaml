@@ -34,3 +34,6 @@ dependencies:
   - name: token-service
     version: 0.1.0
     condition: token-service.enabled
+  - name: ui
+    version: 0.1.0
+    condition: ui.enabled
