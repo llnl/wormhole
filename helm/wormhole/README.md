@@ -10,6 +10,7 @@ Wormhole provides secure, authenticated access to applications running on HPC sy
 
 - **Token Service** - Authentication token management and JWT issuance
 - **Route Registry** - Route registration, validation, and coordination
+- **UI** - Web interface for managing tokens and viewing routes
 - **Holepunch** - Envoy-based gateway with external authentication and xDS control plane
 - **Airlock** - Local reverse proxy for request validation and forwarding
 - **Wormhole CLI (`wh`)** - User-facing tool for opening tunnels
@@ -421,7 +422,7 @@ token-service:
   ingress:
     enabled: true
     hosts:
-      - host: token-service.example.com
+      - host: wormhole.example.com
         paths:
           - path: /token-service
             pathType: Prefix
@@ -434,7 +435,15 @@ route-registry:
   ingress:
     enabled: true
     hosts:
-      - host: route-registry.example.com
+      - host: wormhole.example.com
+
+ui:
+  enabled: true
+  basePath: /wormhole
+  ingress:
+    enabled: true
+    hosts:
+      - host: wormhole.example.com  # Same host as token-service and route-registry
 ```
 
 **Holepunch Wildcard Routing:**

@@ -1,0 +1,36 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/llnl/wormhole-ui
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Also used as the Ingress path.
+basePath: /wormhole
+
+# tokenServiceUrl and routeRegistryUrl must be paths on the UI's own host.
+# Empty values use the image's defaults. loginUrl defaults to
+# /token-service/auth/login?next=, so set it too if tokenServiceUrl changes.
+config:
+  tokenServiceUrl: ""
+  routeRegistryUrl: ""
+  loginUrl: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+resources: {}
+
+#
+# Global values set at this level to facilitate templates/testing only.
+global:
+  imagePullSecrets: []
+  serviceAccount: {}
