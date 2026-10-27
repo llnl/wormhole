@@ -52,7 +52,7 @@ envoy:
 
   image:
     repository: docker.io/envoyproxy/envoy
-    tag: distroless-v1.38.5
+    tag: distroless-v1.38.9
     pullPolicy: IfNotPresent
 
   node:
